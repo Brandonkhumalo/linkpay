@@ -28,7 +28,7 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
     try {
       await api(`/public/stores/${encodeURIComponent(slug)}/enquiries`, {
         method: "POST",
-        body: JSON.stringify({ ...data, product_id: product.id }),
+        body: JSON.stringify({ ...data, ...(product?.id ? { product_id: product.id } : {}) }),
       });
       setMessage(creator
         ? "Your brief was sent. The creator can contact you using the details provided."
@@ -130,7 +130,9 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
                   required
                   minLength={5}
                   maxLength={3000}
-                  defaultValue={`I'm interested in ${product.name}.`}
+                  defaultValue={product?.name
+                    ? `I'm interested in ${product.name}.`
+                    : "We'd like to discuss a collaboration."}
                 />
               </label>
               <button className="button button-dark" disabled={busy}>

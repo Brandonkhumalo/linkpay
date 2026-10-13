@@ -184,6 +184,12 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	storeUpdate["profile_type"] = "creator"
 	storeUpdate["creator_niche"] = "Food"
 	storeUpdate["creator_location"] = "Harare"
+	storeUpdate["whatsapp"] = ""
+	storeUpdate["creator_portfolio_urls"] = []string{"javascript:alert(1)"}
+	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
+	if status != 400 {
+		t.Fatalf("unsafe portfolio link accepted: %d", status)
+	}
 	storeUpdate["creator_portfolio_urls"] = []string{"https://example.com/work"}
 	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
 	if status != 200 {
@@ -217,6 +223,20 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	status, tenantBriefs, _ := request("GET", "/api/v1/enquiries", nil, aCookie)
 	if status != 200 || len(tenantBriefs["items"].([]any)) != 1 || tenantBriefs["items"].([]any)[0].(map[string]any)["brand_name"] != "Example Brand" {
 		t.Fatalf("creator briefs: %d %v", status, tenantBriefs)
+	}
+	briefID := tenantBriefs["items"].([]any)[0].(map[string]any)["id"].(string)
+	status, detail, _ := request("GET", "/api/v1/enquiries/"+briefID, nil, aCookie)
+	if status != 200 || detail["deliverables"] != "Two videos" {
+		t.Fatalf("private brief detail: %d %v", status, detail)
+	}
+	status, _, _ = request("GET", "/api/v1/enquiries/"+briefID, nil, bCookie)
+	if status != 404 {
+		t.Fatalf("cross-tenant brief detail exposed: %d", status)
+	}
+	generalBrief := map[string]any{"name": "Agency contact", "email": "agency@example.test", "message": "We would like to collaborate", "brand_name": "Agency", "deliverables": "A campaign concept"}
+	status, _, _ = request("POST", "/api/v1/public/stores/tenant-a/enquiries", generalBrief, nil)
+	if status != 201 {
+		t.Fatalf("general partnership brief: %d", status)
 	}
 	status, otherBriefs, _ := request("GET", "/api/v1/enquiries", nil, bCookie)
 	if status != 200 || len(otherBriefs["items"].([]any)) != 0 {

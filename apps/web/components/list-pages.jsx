@@ -502,7 +502,7 @@ export function Enquiries({ page }) {
                         </button>
                         <Link
                           className="table-action"
-                          href={`/app/invoices/new?name=${encodeURIComponent(e.brand_name || e.name)}&email=${encodeURIComponent(e.email)}&phone=${encodeURIComponent(e.phone)}&item=${encodeURIComponent(e.product_name || "")}&unit_price=${e.product_name && !e.product_price_on_request ? (e.product_price_minor / 100).toFixed(2) : ""}`}
+                          href={`/app/invoices/new?enquiry=${e.id}`}
                         >
                           Create invoice after agreement →
                         </Link>

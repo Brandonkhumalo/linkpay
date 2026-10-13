@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { api, errorMessage, money } from "../../../../lib/api";
 import {
   Loading,
@@ -16,15 +16,46 @@ function NewInvoiceContent() {
   const router = useRouter(),
     params = useSearchParams(),
     { business } = useWorkspace();
+  const sourceId = params.get("enquiry");
   const [customerPage, setCustomerPage] = useState(1),
     [selected, setSelected] = useState(null),
     [creatingCustomer, setCreatingCustomer] = useState(false),
     [items, setItems] = useState([
-      { description: params.get("item") || "", quantity: 1, unit_price: params.get("unit_price") || "" },
+      { description: "", quantity: 1, unit_price: "" },
     ]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  const [source, setSource] = useState(null);
+  const [sourceLoading, setSourceLoading] = useState(Boolean(sourceId));
+  const [sourceError, setSourceError] = useState("");
   const customers = useResource(`/customers?page=${customerPage}`);
+  useEffect(() => {
+    if (!sourceId) return;
+    let active = true;
+    api(`/enquiries/${encodeURIComponent(sourceId)}`)
+      .then((enquiry) => {
+        if (!active) return;
+        setSource(enquiry);
+        setItems([
+          {
+            description: enquiry.product_name || "",
+            quantity: 1,
+            unit_price:
+              enquiry.product_name && !enquiry.product_price_on_request
+                ? (enquiry.product_price_minor / 100).toFixed(2)
+                : "",
+          },
+        ]);
+        setCreatingCustomer(true);
+      })
+      .catch((requestError) => {
+        if (active) setSourceError(errorMessage(requestError));
+      })
+      .finally(() => active && setSourceLoading(false));
+    return () => {
+      active = false;
+    };
+  }, [sourceId]);
   function changeItem(index, key, value) {
     setItems((current) =>
       current.map((item, i) =>
@@ -89,6 +120,16 @@ function NewInvoiceContent() {
       ),
     0,
   );
+  if (sourceLoading) return <Loading />;
+  if (sourceError)
+    return (
+      <section className="panel">
+        <Notice message={`Could not load the enquiry: ${sourceError}`} />
+        <Link href="/app/enquiries" className="button button-light">
+          ← Back to enquiries
+        </Link>
+      </section>
+    );
   return (
     <>
       <PageHeader
@@ -102,6 +143,12 @@ function NewInvoiceContent() {
         }
       />
       <Notice message={error} />
+      {source && (
+        <div className="notice notice-success" role="status">
+          Drafting from {source.brand_name || source.name}&apos;s enquiry.
+          Confirm the final scope and price before issuing this invoice.
+        </div>
+      )}
       <div className="page-columns">
         <div className="stack">
           <section className="panel">
@@ -128,7 +175,7 @@ function NewInvoiceContent() {
                     name="name"
                     required
                     minLength={2}
-                    defaultValue={params.get("name") || ""}
+                    defaultValue={source?.brand_name || source?.name || ""}
                   />
                 </label>
                 <div className="form-grid">
@@ -137,14 +184,14 @@ function NewInvoiceContent() {
                     <input
                       name="email"
                       type="email"
-                      defaultValue={params.get("email") || ""}
+                      defaultValue={source?.email || ""}
                     />
                   </label>
                   <label className="field">
                     Phone
                     <input
                       name="phone"
-                      defaultValue={params.get("phone") || ""}
+                      defaultValue={source?.phone || ""}
                     />
                   </label>
                 </div>

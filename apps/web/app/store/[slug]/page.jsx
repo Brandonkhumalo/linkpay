@@ -48,6 +48,9 @@ export default async function StorePage({ params }) {
             </p>
           )}
           <div className="store-links">
+            {business.profile_type === "creator" && (
+              <PublicEnquiry slug={slug} creator currency={business.currency} />
+            )}
             {business.whatsapp && (
               <a
                 className="button button-dark small"

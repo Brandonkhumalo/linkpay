@@ -268,6 +268,7 @@ func (a *App) Routes(webDir string) http.Handler {
 			r.Get("/customers", a.customers)
 			r.Post("/customers", a.createCustomer)
 			r.Get("/enquiries", a.enquiries)
+			r.Get("/enquiries/{id}", a.enquiryDetail)
 			r.Get("/invoices", a.invoices)
 			r.Post("/invoices", a.createInvoice)
 			r.Get("/invoices/{id}", a.invoice)

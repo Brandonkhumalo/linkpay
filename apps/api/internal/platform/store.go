@@ -490,6 +490,14 @@ type enquiry struct {
 	ProductPriceOnRequest bool   `json:"product_price_on_request"`
 }
 
+const enquirySelect = `SELECT e.id::text,COALESCE(e.product_id::text,''),e.name,e.email,e.phone,e.message,e.created_at::text,e.brand_name,e.budget_minor,COALESCE(e.campaign_deadline::text,''),e.deliverables,e.usage_rights,COALESCE(p.name,''),COALESCE(p.price_minor,0),COALESCE(p.price_on_request,false) FROM enquiries e LEFT JOIN products p ON p.id=e.product_id AND p.business_id=e.business_id`
+
+func scanEnquiry(row scanner) (enquiry, error) {
+	var e enquiry
+	err := row.Scan(&e.ID, &e.ProductID, &e.Name, &e.Email, &e.Phone, &e.Message, &e.CreatedAt, &e.BrandName, &e.BudgetMinor, &e.CampaignDeadline, &e.Deliverables, &e.UsageRights, &e.ProductName, &e.ProductPriceMinor, &e.ProductPriceOnRequest)
+	return e, err
+}
+
 func (a *App) publicEnquiry(w http.ResponseWriter, r *http.Request) {
 	var e enquiry
 	if !decode(w, r, &e) {
@@ -567,7 +575,7 @@ func (a *App) enquiries(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := a.DB.Query(r.Context(), `SELECT e.id::text,COALESCE(e.product_id::text,''),e.name,e.email,e.phone,e.message,e.created_at::text,e.brand_name,e.budget_minor,COALESCE(e.campaign_deadline::text,''),e.deliverables,e.usage_rights,COALESCE(p.name,''),COALESCE(p.price_minor,0),COALESCE(p.price_on_request,false) FROM enquiries e LEFT JOIN products p ON p.id=e.product_id AND p.business_id=e.business_id WHERE e.business_id=$1 ORDER BY e.created_at DESC,e.id DESC LIMIT $2 OFFSET $3`, who(r).BusinessID, listPageSize+1, (page-1)*listPageSize)
+	rows, err := a.DB.Query(r.Context(), enquirySelect+` WHERE e.business_id=$1 ORDER BY e.created_at DESC,e.id DESC LIMIT $2 OFFSET $3`, who(r).BusinessID, listPageSize+1, (page-1)*listPageSize)
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -575,9 +583,9 @@ func (a *App) enquiries(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []enquiry{}
 	for rows.Next() {
-		var e enquiry
-		if err = rows.Scan(&e.ID, &e.ProductID, &e.Name, &e.Email, &e.Phone, &e.Message, &e.CreatedAt, &e.BrandName, &e.BudgetMinor, &e.CampaignDeadline, &e.Deliverables, &e.UsageRights, &e.ProductName, &e.ProductPriceMinor, &e.ProductPriceOnRequest); err != nil {
-			unavailable(w, r, err)
+		e, scanErr := scanEnquiry(rows)
+		if scanErr != nil {
+			unavailable(w, r, scanErr)
 			return
 		}
 		out = append(out, e)
@@ -587,4 +595,22 @@ func (a *App) enquiries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, paged(out, page))
+}
+
+func (a *App) enquiryDetail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if !validID(id) {
+		fail(w, 404, "Enquiry not found")
+		return
+	}
+	e, err := scanEnquiry(a.DB.QueryRow(r.Context(), enquirySelect+` WHERE e.id=$1 AND e.business_id=$2`, id, who(r).BusinessID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			fail(w, 404, "Enquiry not found")
+		} else {
+			unavailable(w, r, err)
+		}
+		return
+	}
+	writeJSON(w, 200, e)
 }
