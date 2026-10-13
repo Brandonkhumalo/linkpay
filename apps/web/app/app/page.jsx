@@ -1,0 +1,214 @@
+"use client";
+
+import Link from "next/link";
+import { money } from "../../lib/api";
+import {
+  Badge,
+  Empty,
+  Icon,
+  Loading,
+  Notice,
+  PageHeader,
+  useResource,
+} from "../../components/ui";
+import { useWorkspace } from "./layout";
+
+export default function Overview() {
+  const { business, me } = useWorkspace();
+  const overview = useResource("/analytics/overview");
+  const subscription = useResource("/subscription");
+  const invoices = useResource("/invoices?page=1");
+  const firstName = me.email.split("@")[0].split(/[._-]/)[0];
+  const stats = overview.data && [
+    ["Total invoiced", overview.data.invoiced_minor, "file"],
+    ["Payments recorded", overview.data.received_minor, "card"],
+    ["Outstanding", overview.data.outstanding_minor, "grid"],
+    ["Overdue", overview.data.overdue_minor, "bell"],
+  ];
+  return (
+    <>
+      <PageHeader
+        eyebrow="YOUR BUSINESS AT A GLANCE"
+        title={`Good to see you, ${firstName}.`}
+        description="Here is what is happening with your business today."
+        action={
+          <Link className="button button-dark" href="/app/invoices/new">
+            <Icon name="plus" size={17} /> Create invoice
+          </Link>
+        }
+      />
+      {overview.loading ? (
+        <Loading />
+      ) : overview.error ? (
+        <Notice message={overview.error} />
+      ) : (
+        <div className="stats-grid">
+          {stats.map(([label, value, icon], index) => (
+            <div
+              className={`stat-card ${index === 2 ? "featured" : ""}`}
+              key={label}
+            >
+              <span className="stat-icon">
+                <Icon name={icon} size={17} />
+              </span>
+              <small>{label}</small>
+              <strong>{money(value, business.currency)}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="content-grid">
+        <div className="stack">
+          <section className="panel">
+            <div className="panel-head">
+              <div>
+                <h2>Recent invoices</h2>
+                <span className="helper">
+                  Keep track of what has been sent and paid.
+                </span>
+              </div>
+              <Link className="button button-light small" href="/app/invoices">
+                View all →
+              </Link>
+            </div>
+            {invoices.loading ? (
+              <Loading />
+            ) : invoices.error ? (
+              <Notice message={invoices.error} />
+            ) : invoices.data.items.length ? (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Invoice</th>
+                      <th>Customer</th>
+                      <th>Due</th>
+                      <th>Status</th>
+                      <th>Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoices.data.items.slice(0, 5).map((i) => (
+                      <tr key={i.id}>
+                        <td>
+                          <Link
+                            className="table-action"
+                            href={`/app/invoices/${i.id}`}
+                          >
+                            #{String(i.number).padStart(6, "0")}
+                          </Link>
+                        </td>
+                        <td>
+                          <strong>{i.customer_name}</strong>
+                        </td>
+                        <td>{i.due_at}</td>
+                        <td>
+                          <Badge>{i.status}</Badge>
+                        </td>
+                        <td>
+                          <strong>{money(i.balance_minor, i.currency)}</strong>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty
+                title="Your first invoice starts here"
+                description="Create an invoice to start tracking payments."
+                action={
+                  <Link
+                    className="button button-primary"
+                    href="/app/invoices/new"
+                  >
+                    Create invoice →
+                  </Link>
+                }
+              />
+            )}
+          </section>
+          <section className="panel">
+            <h2>Quick actions</h2>
+            <p>A few clicks to keep your business moving.</p>
+            <div className="quick-actions">
+              <Link href="/app/products">
+                Add a listing <span>↗</span>
+              </Link>
+              <Link href="/app/customers">
+                Add a customer <span>↗</span>
+              </Link>
+              <Link href="/app/storefront">
+                Edit storefront <span>↗</span>
+              </Link>
+            </div>
+          </section>
+        </div>
+        <div className="stack">
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Your plan</h2>
+              {subscription.data && <Badge>{subscription.data.plan}</Badge>}
+            </div>
+            {subscription.loading ? (
+              <Loading />
+            ) : subscription.error ? (
+              <Notice message={subscription.error} />
+            ) : (
+              <>
+                <p>Your plan is ready to support your next step.</p>
+                <div className="usage-row">
+                  <div>
+                    <strong>Listings</strong>
+                    <span>
+                      {subscription.data.products_used} /{" "}
+                      {subscription.data.product_limit}
+                    </span>
+                  </div>
+                  <div className="usage-track">
+                    <span
+                      style={{
+                        width: `${Math.min(100, (100 * subscription.data.products_used) / subscription.data.product_limit)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="usage-row">
+                  <div>
+                    <strong>Invoices this month</strong>
+                    <span>
+                      {subscription.data.invoices_used} /{" "}
+                      {subscription.data.invoice_monthly_limit}
+                    </span>
+                  </div>
+                  <div className="usage-track">
+                    <span
+                      style={{
+                        width: `${Math.min(100, (100 * subscription.data.invoices_used) / subscription.data.invoice_monthly_limit)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <Link className="button button-light small" href="/app/billing">
+                  Explore plans →
+                </Link>
+              </>
+            )}
+          </section>
+          <section className="panel" style={{ background: "#e9f2e0" }}>
+            <span className="eyebrow">YOUR PUBLIC LINK</span>
+            <h2>Ready to share?</h2>
+            <p>Make it easy for customers to discover what you offer.</p>
+            <Link
+              className="button button-dark small"
+              href={`/store/${business.slug}`}
+              target="_blank"
+            >
+              Open storefront <Icon name="external" size={14} />
+            </Link>
+          </section>
+        </div>
+      </div>
+    </>
+  );
+}

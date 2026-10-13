@@ -1,0 +1,9 @@
+.env
+.env.*
+!.env.example
+cookies.txt
+node_modules/
+.next/
+dist/
+build/
+coverage/
