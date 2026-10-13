@@ -4,7 +4,7 @@ import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { Notice } from "./ui";
 
-export default function PublicEnquiry({ slug, product }) {
+export default function PublicEnquiry({ slug, product, creator = false, currency = "USD" }) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -14,6 +14,12 @@ export default function PublicEnquiry({ slug, product }) {
     setBusy(true);
     setError("");
     const data = Object.fromEntries(new FormData(e.currentTarget));
+    if (creator) {
+      data.budget_minor = data.budget
+        ? Math.round(Number(data.budget) * 100)
+        : null;
+      delete data.budget;
+    }
     if (!data.email && !data.phone) {
       setError("Add an email address or phone number.");
       setBusy(false);
@@ -24,9 +30,9 @@ export default function PublicEnquiry({ slug, product }) {
         method: "POST",
         body: JSON.stringify({ ...data, product_id: product.id }),
       });
-      setMessage(
-        "Your enquiry was sent. The business can contact you using the details provided.",
-      );
+      setMessage(creator
+        ? "Your brief was sent. The creator can contact you using the details provided."
+        : "Your enquiry was sent. The business can contact you using the details provided.");
       setOpen(false);
     } catch (error) {
       setError(errorMessage(error));
@@ -43,7 +49,7 @@ export default function PublicEnquiry({ slug, product }) {
           setMessage("");
         }}
       >
-        Request invoice →
+        {creator ? "Send partnership brief →" : "Request invoice →"}
       </button>
       {message && (
         <div className="notice notice-success" role="status">
@@ -62,7 +68,7 @@ export default function PublicEnquiry({ slug, product }) {
             aria-label="Send an enquiry"
           >
             <div className="modal-head">
-              <h2>Ask about {product.name}</h2>
+              <h2>{creator ? "Propose a collaboration" : `Ask about ${product.name}`}</h2>
               <button
                 className="modal-close"
                 aria-label="Close"
@@ -77,6 +83,32 @@ export default function PublicEnquiry({ slug, product }) {
             </p>
             <Notice message={error} />
             <form onSubmit={submit}>
+              {creator && (
+                <>
+                  <label className="field">
+                    Brand or agency name
+                    <input name="brand_name" required minLength={2} maxLength={160} />
+                  </label>
+                  <label className="field">
+                    Deliverables
+                    <textarea name="deliverables" required minLength={5} maxLength={2000} placeholder="For example, two short videos and one story" />
+                  </label>
+                  <div className="form-grid">
+                    <label className="field">
+                      Budget ({currency}, optional)
+                      <input name="budget" type="number" min="0" max="1000000000" step="0.01" />
+                    </label>
+                    <label className="field">
+                      Target date (optional)
+                      <input name="campaign_deadline" type="date" />
+                    </label>
+                  </div>
+                  <label className="field">
+                    Content usage rights (optional)
+                    <textarea name="usage_rights" maxLength={1000} placeholder="Where and for how long will the brand use the content?" />
+                  </label>
+                </>
+              )}
               <label className="field">
                 Your name
                 <input name="name" required minLength={2} maxLength={160} />
@@ -92,7 +124,7 @@ export default function PublicEnquiry({ slug, product }) {
                 </label>
               </div>
               <label className="field">
-                Message
+                {creator ? "Campaign details" : "Message"}
                 <textarea
                   name="message"
                   required
@@ -102,7 +134,7 @@ export default function PublicEnquiry({ slug, product }) {
                 />
               </label>
               <button className="button button-dark" disabled={busy}>
-                {busy ? "Sending…" : "Send enquiry"}
+                {busy ? "Sending…" : creator ? "Send brief" : "Send enquiry"}
               </button>
             </form>
           </section>

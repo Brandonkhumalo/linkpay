@@ -2,6 +2,7 @@ package platform
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -89,13 +90,27 @@ func invoiceStatus(issued string, void bool, paid, total int64, due, today strin
 func planInvoiceLimit(plan string) int {
 	switch plan {
 	case "starter":
-		return 30
+		return 60
 	case "business":
-		return 100
+		return 500
 	default:
-		return 3
+		return 30
 	}
 }
+
+type invoiceQuotaReader interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}
+
+func invoiceQuota(ctx context.Context, db invoiceQuotaReader, businessID string) (int, int, error) {
+	var monthlyUsed, topupBalance int
+	err := db.QueryRow(ctx, `SELECT
+ (SELECT count(*) FROM invoices WHERE business_id=$1 AND quota_source='subscription' AND created_at>=date_trunc('month',now())),
+ (SELECT COALESCE(sum(invoice_quantity),0) FROM billing_payments WHERE business_id=$1 AND kind='invoice_topup' AND status='paid')
+ -(SELECT count(*) FROM invoices WHERE business_id=$1 AND quota_source='invoice_topup')`, businessID).Scan(&monthlyUsed, &topupBalance)
+	return monthlyUsed, topupBalance, err
+}
+
 func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 	var in invoiceInput
 	if !decode(w, r, &in) {
@@ -143,15 +158,18 @@ func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 		unavailable(w, r, err)
 		return
 	}
-	var count int
-	err = tx.QueryRow(r.Context(), `SELECT count(*) FROM invoices WHERE business_id=$1 AND created_at>=date_trunc('month',now()) AND created_at<date_trunc('month',now())+interval '1 month'`, who(r).BusinessID).Scan(&count)
+	monthlyUsed, topupBalance, err := invoiceQuota(r.Context(), tx, who(r).BusinessID)
 	if err != nil {
 		unavailable(w, r, err)
 		return
 	}
-	if count >= planInvoiceLimit(plan) {
-		fail(w, 403, "Monthly invoice limit reached")
-		return
+	quotaSource := "subscription"
+	if monthlyUsed >= planInvoiceLimit(plan) {
+		if topupBalance <= 0 {
+			fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
+			return
+		}
+		quotaSource = "invoice_topup"
 	}
 	var exists bool
 	err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM customers WHERE id=$1 AND business_id=$2)`, in.CustomerID, who(r).BusinessID).Scan(&exists)
@@ -164,7 +182,7 @@ func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := newID()
-	_, err = tx.Exec(r.Context(), `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,discount_minor,tax_minor,total_minor,notes) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, id, who(r).BusinessID, in.CustomerID, number, currency, in.DueAt, subtotal, in.DiscountMinor, in.TaxMinor, total, in.Notes)
+	_, err = tx.Exec(r.Context(), `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,discount_minor,tax_minor,total_minor,notes,quota_source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, who(r).BusinessID, in.CustomerID, number, currency, in.DueAt, subtotal, in.DiscountMinor, in.TaxMinor, total, in.Notes, quotaSource)
 	if err != nil {
 		unavailable(w, r, err)
 		return

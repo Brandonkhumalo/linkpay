@@ -9,7 +9,8 @@ import { useWorkspace } from "../layout";
 export default function Storefront() {
   const { business, setBusiness } = useWorkspace();
   const [notice, setNotice] = useState(""),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [profileType, setProfileType] = useState(business.profile_type || "business");
   const link = `/store/${business.slug}`;
   async function save(e) {
     e.preventDefault();
@@ -19,6 +20,16 @@ export default function Storefront() {
     const body = Object.fromEntries(data);
     body.currency = String(body.currency).toUpperCase();
     body.published = data.has("published");
+    if (profileType === "creator") {
+      body.creator_portfolio_urls = String(body.creator_portfolio_urls || "")
+        .split("\n")
+        .map((url) => url.trim())
+        .filter(Boolean);
+    } else {
+      body.creator_niche = business.creator_niche || "";
+      body.creator_location = business.creator_location || "";
+      body.creator_portfolio_urls = business.creator_portfolio_urls || [];
+    }
     try {
       const saved = await api("/storefront", {
         method: "PATCH",
@@ -47,7 +58,7 @@ export default function Storefront() {
       <PageHeader
         eyebrow="YOUR DIGITAL FRONT DOOR"
         title="Your storefront"
-        description="Your shop is optional. Publish it when you're ready for customers to find you."
+        description="Publish a shop or creator profile when you're ready to be found."
         action={
           business.published ? (
             <Link
@@ -77,7 +88,18 @@ export default function Storefront() {
           <p>The details customers will see on your public page.</p>
           <form onSubmit={save}>
             <label className="field">
-              Business name
+              Profile type
+              <select
+                name="profile_type"
+                value={profileType}
+                onChange={(event) => setProfileType(event.target.value)}
+              >
+                <option value="business">Business or shop</option>
+                <option value="creator">Creator or influencer</option>
+              </select>
+            </label>
+            <label className="field">
+              {profileType === "creator" ? "Creator name" : "Business name"}
               <input
                 name="name"
                 required
@@ -86,6 +108,41 @@ export default function Storefront() {
                 defaultValue={business.name}
               />
             </label>
+            {profileType === "creator" && (
+              <>
+                <div className="form-grid">
+                  <label className="field">
+                    Content niche
+                    <input
+                      name="creator_niche"
+                      maxLength={120}
+                      defaultValue={business.creator_niche}
+                      placeholder="Beauty, food, tech..."
+                    />
+                  </label>
+                  <label className="field">
+                    Location
+                    <input
+                      name="creator_location"
+                      maxLength={120}
+                      defaultValue={business.creator_location}
+                      placeholder="Harare, Zimbabwe"
+                    />
+                  </label>
+                </div>
+                <label className="field">
+                  Portfolio links (one HTTPS URL per line, up to six)
+                  <textarea
+                    name="creator_portfolio_urls"
+                    defaultValue={(business.creator_portfolio_urls || []).join("\n")}
+                    placeholder="https://..."
+                  />
+                  <span className="helper">
+                    Link to your best work. Only add content you have permission to share.
+                  </span>
+                </label>
+              </>
+            )}
             <label className="field">
               Description
               <textarea
@@ -114,8 +171,7 @@ export default function Storefront() {
                   defaultValue={business.whatsapp}
                 />
                 <span className="helper">
-                  Required to publish. Include your country code, for example
-                  +263771234567. Customers will open a chat with this number.
+                  {profileType === "creator" ? "Optional when you provide a contact email. Brands can send briefs through your profile." : "Required to publish. Include your country code, for example +263771234567. Customers will open a chat with this number."}
                 </span>
               </label>
               <label className="field">
@@ -197,8 +253,8 @@ export default function Storefront() {
               Publish storefront
             </label>
             <p className="helper">
-              Published shops appear in the public directory. Keep this off if
-              you only use invoices.
+              Published profiles appear in the public directory. Keep this off
+              if you only use invoices.
             </p>
             <button className="button button-dark" disabled={busy}>
               {busy ? "Saving…" : "Save storefront"}

@@ -7,7 +7,7 @@ export default function Home() {
       <header className="site-nav">
         <Brand />
         <nav>
-          <Link href="/shops">Explore shops</Link>
+          <Link href="/shops">Explore shops & creators</Link>
           <a href="#features">Why LinkPay</a>
           <a href="#how-it-works">How it works</a>
           <a href="#pricing">Pricing</a>
@@ -32,8 +32,8 @@ export default function Home() {
               <em>Every opportunity.</em>
             </h1>
             <p>
-              Show what you offer, turn enquiries into invoices, and stay on top
-              of every payment. Your business journey, beautifully connected.
+              Showcase products, services, or creator work. Turn enquiries and
+              brand briefs into invoices, and stay on top of every payment.
             </p>
             <div className="hero-cta">
               <Link className="button button-primary" href="/register">
@@ -233,8 +233,8 @@ export default function Home() {
               Start small. <em>Grow freely.</em>
             </h2>
             <p>
-              Try Starter or Business free for exactly 168 hours. Continue on
-              Free afterward unless you choose a paid plan.
+              Start on Free, or try Starter or Business for exactly 168 hours.
+              Continue on Free afterward unless you choose a paid plan.
             </p>
           </div>
           <div className="pricing-cards">
@@ -247,12 +247,12 @@ export default function Home() {
               <p>For the first steps of your business journey.</p>
               <ul>
                 <li>5 products or services</li>
-                <li>3 invoices per month</li>
+                <li>30 invoices per month</li>
                 <li>Your own shareable storefront</li>
                 <li>25 MB image storage</li>
               </ul>
               <Link className="button button-outline" href="/register">
-                Start a free trial <Icon name="arrow" size={16} />
+                Create free account <Icon name="arrow" size={16} />
               </Link>
             </article>
             <article className="featured-plan">
@@ -265,7 +265,7 @@ export default function Home() {
               <p>More space and follow-up tools as you grow.</p>
               <ul>
                 <li>30 products or services</li>
-                <li>30 invoices per month</li>
+                <li>60 invoices per month</li>
                 <li>100 reminder emails per month</li>
                 <li>150 MB image storage</li>
               </ul>
@@ -284,8 +284,8 @@ export default function Home() {
               </div>
               <p>The capacity for a busier operation.</p>
               <ul>
-                <li>100 products or services</li>
-                <li>100 invoices per month</li>
+                <li>500 products or services</li>
+                <li>500 invoices per month</li>
                 <li>500 reminder emails per month</li>
                 <li>500 MB image storage</li>
               </ul>
@@ -301,7 +301,9 @@ export default function Home() {
             Trials start at signup, last exactly 168 hours, and require no
             payment details. They end on the Free plan unless you buy a plan.
             Paid plans use Paynow Zimbabwe checkout and renew manually. Prices
-            shown in USD; annual prices are $36 Starter and $60 Business.
+            shown in USD; annual prices are $36 Starter and $60 Business. Extra
+            invoices cost $1 for 30 or $2 for 100. They carry over until used,
+            after each month&apos;s plan invoices.
           </p>
         </section>
         <section className="final-cta">

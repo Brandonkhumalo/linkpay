@@ -62,14 +62,14 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	in.BusinessName = strings.TrimSpace(in.BusinessName)
 	in.Slug = strings.ToLower(strings.TrimSpace(in.Slug))
 	if in.TrialPlan == "" {
-		in.TrialPlan = "starter"
+		in.TrialPlan = "free"
 	}
 	if !validEmail(in.Email) || len(in.Password) < 12 || len(in.Password) > 72 || len(in.BusinessName) < 2 || len(in.BusinessName) > 120 || !slugPattern.MatchString(in.Slug) {
 		fail(w, 400, "Provide a valid email, password of 12–72 characters, business name, and slug")
 		return
 	}
-	if in.TrialPlan != "starter" && in.TrialPlan != "business" {
-		fail(w, 400, "Choose a Starter or Business trial")
+	if in.TrialPlan != "free" && in.TrialPlan != "starter" && in.TrialPlan != "business" {
+		fail(w, 400, "Choose Free, Starter, or Business")
 		return
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
@@ -92,7 +92,12 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `INSERT INTO businesses(id,name,slug,email,plan,plan_expires_at,trial_plan,trial_started_at,trial_expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '168 hours',$5,now(),now()+interval '168 hours')`, businessID, in.BusinessName, in.Slug, in.Email, in.TrialPlan); err != nil {
+	if in.TrialPlan == "free" {
+		_, err = tx.Exec(r.Context(), `INSERT INTO businesses(id,name,slug,email) VALUES($1,$2,$3,$4)`, businessID, in.BusinessName, in.Slug, in.Email)
+	} else {
+		_, err = tx.Exec(r.Context(), `INSERT INTO businesses(id,name,slug,email,plan,plan_expires_at,trial_plan,trial_started_at,trial_expires_at) VALUES($1,$2,$3,$4,$5,now()+interval '168 hours',$5,now(),now()+interval '168 hours')`, businessID, in.BusinessName, in.Slug, in.Email, in.TrialPlan)
+	}
+	if err != nil {
 		if isUniqueViolation(err) {
 			fail(w, 409, "Email or storefront link is already in use")
 		} else {
@@ -108,7 +113,12 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 		unavailable(w, r, err)
 		return
 	}
-	if _, err = tx.Exec(r.Context(), `INSERT INTO audit_logs(id,business_id,actor_id,action,subject_id,details) VALUES($1,$2,$3,'subscription.trial_started',$2,jsonb_build_object('plan',$4::text,'duration_hours',168,'expires_at',(SELECT trial_expires_at FROM businesses WHERE id=$2)))`, newID(), businessID, userID, in.TrialPlan); err != nil {
+	if in.TrialPlan == "free" {
+		_, err = tx.Exec(r.Context(), `INSERT INTO audit_logs(id,business_id,actor_id,action,subject_id) VALUES($1,$2,$3,'subscription.free_started',$2)`, newID(), businessID, userID)
+	} else {
+		_, err = tx.Exec(r.Context(), `INSERT INTO audit_logs(id,business_id,actor_id,action,subject_id,details) VALUES($1,$2,$3,'subscription.trial_started',$2,jsonb_build_object('plan',$4::text,'duration_hours',168,'expires_at',(SELECT trial_expires_at FROM businesses WHERE id=$2)))`, newID(), businessID, userID, in.TrialPlan)
+	}
+	if err != nil {
 		unavailable(w, r, err)
 		return
 	}

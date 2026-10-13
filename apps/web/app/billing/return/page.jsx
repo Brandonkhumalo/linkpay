@@ -44,7 +44,7 @@ function BillingReturnContent() {
         <p>
           {display.loading
             ? "We are confirming the result with Paynow."
-            : "Your plan status is based on Paynow's verified result. Review it in billing."}
+            : "Your purchase status is based on Paynow's verified result. Review it in billing."}
         </p>
         {display.loading ? <Loading /> : <Notice message={display.error} />}
         <Link className="button button-dark" href="/app/billing">

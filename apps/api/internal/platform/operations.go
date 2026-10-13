@@ -127,9 +127,14 @@ func (a *App) subscription(w http.ResponseWriter, r *http.Request) {
 		unavailable(w, r, err)
 		return
 	}
-	if err = a.DB.QueryRow(r.Context(), `SELECT count(*) FROM invoices WHERE business_id=$1 AND created_at>=date_trunc('month',now())`, who(r).BusinessID).Scan(&monthly); err != nil {
+	var topupBalance int
+	if monthly, topupBalance, err = invoiceQuota(r.Context(), a.DB, who(r).BusinessID); err != nil {
 		unavailable(w, r, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"plan": plan, "expires_at": expires, "trial_plan": trialPlan, "trial_started_at": trialStarted, "trial_expires_at": trialExpires, "trial_active": trialActive, "product_limit": planProductLimit(plan), "invoice_monthly_limit": planInvoiceLimit(plan), "products_used": products, "invoices_used": monthly, "period_start": time.Now().UTC().Format("2006-01")})
+	available, debt := topupBalance, 0
+	if available < 0 {
+		available, debt = 0, -available
+	}
+	writeJSON(w, 200, map[string]any{"plan": plan, "expires_at": expires, "trial_plan": trialPlan, "trial_started_at": trialStarted, "trial_expires_at": trialExpires, "trial_active": trialActive, "product_limit": planProductLimit(plan), "invoice_monthly_limit": planInvoiceLimit(plan), "products_used": products, "invoices_used": monthly, "invoice_topup_balance": available, "invoice_topup_debt": debt, "period_start": time.Now().UTC().Format("2006-01")})
 }

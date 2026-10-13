@@ -5,7 +5,7 @@ export default async function Page({ searchParams }) {
   return (
     <AuthForm
       mode="register"
-      initialTrialPlan={trial === "business" ? "business" : "starter"}
+      initialPlan={trial === "business" || trial === "starter" ? trial : "free"}
     />
   );
 }

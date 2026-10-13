@@ -51,4 +51,7 @@ func TestBillingPrice(t *testing.T) {
 	if billingPrice("starter", 1) != 300 || billingPrice("business", 12) != 6000 || billingPrice("free", 1) != 0 || billingPrice("starter", 13) != 0 {
 		t.Fatal("incorrect price")
 	}
+	if invoiceTopupPrice(30) != 100 || invoiceTopupPrice(100) != 200 || invoiceTopupPrice(0) != 0 || invoiceTopupPrice(31) != 0 {
+		t.Fatal("incorrect invoice top-up price")
+	}
 }

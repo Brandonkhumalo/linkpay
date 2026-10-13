@@ -175,7 +175,7 @@ export default function Overview() {
                 </div>
                 <div className="usage-row">
                   <div>
-                    <strong>Invoices this month</strong>
+                    <strong>Plan invoices this month</strong>
                     <span>
                       {subscription.data.invoices_used} /{" "}
                       {subscription.data.invoice_monthly_limit}
@@ -189,8 +189,12 @@ export default function Overview() {
                     />
                   </div>
                 </div>
+                <p className="helper">
+                  {subscription.data.invoice_topup_balance} purchased invoices
+                  available after your monthly plan invoices are used.
+                </p>
                 <Link className="button button-light small" href="/app/billing">
-                  Explore plans →
+                  Explore plans and top-ups →
                 </Link>
               </>
             )}

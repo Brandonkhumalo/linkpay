@@ -81,7 +81,7 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		req.Header.Set("Origin", "http://linkpay.test")
+		req.Header.Set("Origin", a.PublicURL)
 		req.Header.Set("Content-Type", "application/json")
 		if cookie != nil {
 			req.AddCookie(cookie)
@@ -112,17 +112,35 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 		}
 		return cookie
 	}
-	status, _, _ := request("POST", "/api/v1/auth/register", map[string]any{"email": "invalid-trial@example.test", "password": "a-long-test-password", "business_name": "Invalid Trial", "slug": "invalid-trial", "trial_plan": "free"}, nil)
+	status, _, _ := request("POST", "/api/v1/auth/register", map[string]any{"email": "invalid-trial@example.test", "password": "a-long-test-password", "business_name": "Invalid Trial", "slug": "invalid-trial", "trial_plan": "premium"}, nil)
 	if status != 400 {
-		t.Fatalf("invalid trial plan accepted: %d", status)
+		t.Fatalf("invalid signup plan accepted: %d", status)
+	}
+	freeCookie := register("tenant-free@example.test", "tenant-free", "free")
+	var freePlan string
+	var freeHasTrial, freeHasExpiry bool
+	if err = a.DB.QueryRow(ctx, `SELECT plan,trial_plan IS NOT NULL OR trial_started_at IS NOT NULL OR trial_expires_at IS NOT NULL,plan_expires_at IS NOT NULL FROM businesses WHERE slug='tenant-free'`).Scan(&freePlan, &freeHasTrial, &freeHasExpiry); err != nil {
+		t.Fatal(err)
+	}
+	if freePlan != "free" || freeHasTrial || freeHasExpiry {
+		t.Fatalf("free signup created a trial: plan=%s trial=%t expiry=%t", freePlan, freeHasTrial, freeHasExpiry)
+	}
+	status, freeSubscription, _ := request("GET", "/api/v1/subscription", nil, freeCookie)
+	if status != 200 || freeSubscription["plan"] != "free" || freeSubscription["trial_active"] != false || freeSubscription["invoice_monthly_limit"] != float64(30) {
+		t.Fatalf("free signup subscription: %d %v", status, freeSubscription)
+	}
+	status, _, _ = request("POST", "/api/v1/auth/register", map[string]any{"email": "tenant-default@example.test", "password": "a-long-test-password", "business_name": "Default Free", "slug": "tenant-default"}, nil)
+	if status != 201 {
+		t.Fatalf("signup without plan did not default to Free: %d", status)
 	}
 	aCookie := register("tenant-a@example.test", "tenant-a", "starter")
 	bCookie := register("tenant-b@example.test", "tenant-b", "business")
 	for _, trial := range []struct {
-		slug, plan string
-		limit      float64
-		cookie     *http.Cookie
-	}{{"tenant-a", "starter", 30, aCookie}, {"tenant-b", "business", 100, bCookie}} {
+		slug, plan   string
+		productLimit float64
+		invoiceLimit float64
+		cookie       *http.Cookie
+	}{{"tenant-a", "starter", 30, 60, aCookie}, {"tenant-b", "business", 500, 500, bCookie}} {
 		var storedPlan, trialPlan string
 		var started, expires, planExpires time.Time
 		var seconds float64
@@ -133,7 +151,7 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 			t.Fatalf("incorrect %s trial window: %s %s %v %v %v", trial.slug, storedPlan, trialPlan, started, expires, planExpires)
 		}
 		status, subscription, _ := request("GET", "/api/v1/subscription", nil, trial.cookie)
-		if status != 200 || subscription["plan"] != trial.plan || subscription["trial_active"] != true || subscription["product_limit"] != trial.limit {
+		if status != 200 || subscription["plan"] != trial.plan || subscription["trial_active"] != true || subscription["product_limit"] != trial.productLimit || subscription["invoice_monthly_limit"] != trial.invoiceLimit {
 			t.Fatalf("%s subscription: %d %v", trial.slug, status, subscription)
 		}
 	}
@@ -162,6 +180,52 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	shops := directory["items"].([]any)
 	if status != 200 || len(shops) != 1 || shops[0].(map[string]any)["slug"] != "tenant-a" || shops[0].(map[string]any)["whatsapp"] != "+263771234567" {
 		t.Fatalf("public directory: %d %v", status, directory)
+	}
+	storeUpdate["profile_type"] = "creator"
+	storeUpdate["creator_niche"] = "Food"
+	storeUpdate["creator_location"] = "Harare"
+	storeUpdate["creator_portfolio_urls"] = []string{"https://example.com/work"}
+	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
+	if status != 200 {
+		t.Fatalf("creator profile update: %d", status)
+	}
+	status, directory, _ = request("GET", "/api/v1/public/stores?type=creator", nil, nil)
+	if status != 200 || len(directory["items"].([]any)) != 1 || directory["items"].([]any)[0].(map[string]any)["creator_niche"] != "Food" {
+		t.Fatalf("creator directory: %d %v", status, directory)
+	}
+	status, _, _ = request("GET", "/api/v1/public/stores?type=unknown", nil, nil)
+	if status != 400 {
+		t.Fatalf("invalid directory filter accepted: %d", status)
+	}
+	status, packageView, _ := request("POST", "/api/v1/products", map[string]any{"name": "Sponsored video", "description": "Custom campaign", "kind": "service", "price_minor": 0, "price_on_request": true, "active": true}, aCookie)
+	if status != 201 {
+		t.Fatalf("creator package: %d %v", status, packageView)
+	}
+	status, _, _ = request("POST", "/api/v1/products", map[string]any{"name": "Invalid quote", "kind": "product", "price_minor": 0, "price_on_request": true, "active": true}, aCookie)
+	if status != 400 {
+		t.Fatalf("product quote accepted: %d", status)
+	}
+	status, creatorStore, _ := request("GET", "/api/v1/public/stores/tenant-a", nil, nil)
+	if status != 200 || creatorStore["business"].(map[string]any)["profile_type"] != "creator" || creatorStore["products"].([]any)[0].(map[string]any)["price_on_request"] != true {
+		t.Fatalf("public creator package: %d %v", status, creatorStore)
+	}
+	brief := map[string]any{"product_id": packageView["id"], "name": "Brand manager", "email": "brand@example.test", "message": "We would like to collaborate", "brand_name": "Example Brand", "deliverables": "Two videos", "budget_minor": 50000, "campaign_deadline": "2099-01-01", "usage_rights": "Organic social for six months"}
+	status, _, _ = request("POST", "/api/v1/public/stores/tenant-a/enquiries", brief, nil)
+	if status != 201 {
+		t.Fatalf("brand brief: %d", status)
+	}
+	status, tenantBriefs, _ := request("GET", "/api/v1/enquiries", nil, aCookie)
+	if status != 200 || len(tenantBriefs["items"].([]any)) != 1 || tenantBriefs["items"].([]any)[0].(map[string]any)["brand_name"] != "Example Brand" {
+		t.Fatalf("creator briefs: %d %v", status, tenantBriefs)
+	}
+	status, otherBriefs, _ := request("GET", "/api/v1/enquiries", nil, bCookie)
+	if status != 200 || len(otherBriefs["items"].([]any)) != 0 {
+		t.Fatalf("cross-tenant brief exposed: %d %v", status, otherBriefs)
+	}
+	delete(brief, "deliverables")
+	status, _, _ = request("POST", "/api/v1/public/stores/tenant-a/enquiries", brief, nil)
+	if status != 400 {
+		t.Fatalf("incomplete brand brief accepted: %d", status)
 	}
 	for i := 0; i < listPageSize; i++ {
 		name := "Directory Shop " + strconv.Itoa(i)
@@ -218,6 +282,14 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if status != 409 {
 		t.Fatalf("overpayment accepted: %d", status)
 	}
+	status, _, _ = request("POST", "/api/v1/billing/checkout", map[string]any{"topup_invoices": 31}, aCookie)
+	if status != 400 {
+		t.Fatalf("invalid top-up quantity accepted: %d", status)
+	}
+	status, _, _ = request("POST", "/api/v1/billing/checkout", map[string]any{"plan": "starter", "months": 1, "topup_invoices": 30}, aCookie)
+	if status != 400 {
+		t.Fatalf("mixed plan and top-up accepted: %d", status)
+	}
 	var userID string
 	if err = a.DB.QueryRow(ctx, `SELECT user_id::text FROM sessions WHERE token_hash=$1`, hash(aCookie.Value)).Scan(&userID); err != nil {
 		t.Fatal(err)
@@ -256,13 +328,25 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	t.Setenv("PAYNOW_INTEGRATION_KEY", "test-paynow-integration-key")
 	previousClient := paynowHTTP
 	defer func() { paynowHTTP = previousClient }()
-	providerStatus := "Paid"
+	providerStatus, providerReference, providerAmount := "Paid", reference, "3.00"
 	providerKey := os.Getenv("PAYNOW_INTEGRATION_KEY")
 	paynowHTTP = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.String() == paynowEndpoint {
+			body, readErr := io.ReadAll(r.Body)
+			if readErr != nil {
+				return nil, readErr
+			}
+			fields, parseErr := parsePaynow(string(body), providerKey)
+			if parseErr != nil || fields["amount"] != "1.00" || fields["additionalinfo"] != "LinkPay 30 invoice top-up" {
+				t.Errorf("invalid top-up checkout request: %v %v", fields, parseErr)
+			}
+			response := encodePaynow([]paynowField{{"status", "Ok"}, {"browserurl", "https://www.paynow.co.zw/payment/test"}, {"pollurl", pollURL}}, providerKey)
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(response)), Header: make(http.Header)}, nil
+		}
 		if r.URL.String() != pollURL || r.Method != http.MethodPost {
 			t.Errorf("unexpected poll request: %s %s", r.Method, r.URL)
 		}
-		fields := []paynowField{{"reference", reference}, {"paynowreference", "TEST-123"}, {"amount", "3.00"}, {"status", providerStatus}, {"pollurl", pollURL}}
+		fields := []paynowField{{"reference", providerReference}, {"paynowreference", "TEST-123"}, {"amount", providerAmount}, {"status", providerStatus}, {"pollurl", pollURL}}
 		body := encodePaynow(fields, providerKey)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
 	})}
@@ -296,6 +380,96 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if !duplicateUntil.Equal(paidUntil) {
 		t.Fatal("duplicate callback extended the plan")
 	}
+	t.Setenv("PAYNOW_INTEGRATION_ID", "1234")
+	a.PublicURL = "https://linkpay.test"
+	status, checkout, _ := request("POST", "/api/v1/billing/checkout", map[string]any{"topup_invoices": 30}, aCookie)
+	if status != 201 || checkout["checkout_url"] != "https://www.paynow.co.zw/payment/test" {
+		t.Fatalf("top-up checkout failed: %d %v", status, checkout)
+	}
+	var checkoutKind string
+	var checkoutQuantity int
+	var checkoutPrice int64
+	if err = a.DB.QueryRow(ctx, `SELECT kind,invoice_quantity,amount_minor FROM billing_payments WHERE id=$1`, checkout["id"]).Scan(&checkoutKind, &checkoutQuantity, &checkoutPrice); err != nil || checkoutKind != "invoice_topup" || checkoutQuantity != 30 || checkoutPrice != 100 {
+		t.Fatalf("top-up checkout row: %s %d %d %v", checkoutKind, checkoutQuantity, checkoutPrice, err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoice_topup_balance"] != float64(0) {
+		t.Fatalf("unverified checkout granted invoices: %d %v", status, subscription)
+	}
+	a.PublicURL = "http://linkpay.test"
+	for n := 0; n < 59; n++ {
+		if _, err = a.DB.Exec(ctx, `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,total_minor) VALUES($1,$2,$3,$4,'USD','2099-01-01',0,0)`, newID(), businessID, customer["id"], 1000+n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoices_used"] != float64(60) || subscription["invoice_topup_balance"] != float64(0) {
+		t.Fatalf("subscription quota usage: %d %v", status, subscription)
+	}
+	status, _, _ = request("POST", "/api/v1/invoices", input, aCookie)
+	if status != 403 {
+		t.Fatalf("invoice exceeded plan before top-up: %d", status)
+	}
+	topupID := newID()
+	providerReference, providerAmount = "LP-"+strings.ReplaceAll(topupID, "-", ""), "1.00"
+	if _, err = a.DB.Exec(ctx, `INSERT INTO billing_payments(id,business_id,created_by,reference,kind,invoice_quantity,amount_minor,status,poll_url) VALUES($1,$2,$3,$4,'invoice_topup',30,100,'pending',$5)`, topupID, businessID, userID, providerReference, pollURL); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.verifyBillingPayment(ctx, topupID); err != nil {
+		t.Fatalf("verified top-up: %v", err)
+	}
+	if err = a.verifyBillingPayment(ctx, topupID); err != nil {
+		t.Fatalf("duplicate top-up callback: %v", err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoice_topup_balance"] != float64(30) {
+		t.Fatalf("top-up not credited once: %d %v", status, subscription)
+	}
+	status, topupInvoice, _ := request("POST", "/api/v1/invoices", input, aCookie)
+	if status != 201 {
+		t.Fatalf("invoice with top-up: %d", status)
+	}
+	var quotaSource string
+	if err = a.DB.QueryRow(ctx, `SELECT quota_source FROM invoices WHERE id=$1`, topupInvoice["id"]).Scan(&quotaSource); err != nil || quotaSource != "invoice_topup" {
+		t.Fatalf("invoice did not use purchased credit: %q %v", quotaSource, err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoices_used"] != float64(60) || subscription["invoice_topup_balance"] != float64(29) {
+		t.Fatalf("top-up use changed monthly allowance: %d %v", status, subscription)
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE invoices SET created_at=date_trunc('month',now())-interval '1 day' WHERE business_id=$1 AND quota_source='subscription'`, businessID); err != nil {
+		t.Fatal(err)
+	}
+	status, _, _ = request("POST", "/api/v1/invoices", input, aCookie)
+	if status != 201 {
+		t.Fatalf("new month did not restore plan invoices: %d", status)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoices_used"] != float64(1) || subscription["invoice_topup_balance"] != float64(29) {
+		t.Fatalf("new month spent purchased invoices: %d %v", status, subscription)
+	}
+	providerStatus = "Refunded"
+	if err = a.verifyBillingPayment(ctx, topupID); err != nil {
+		t.Fatalf("top-up refund: %v", err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoice_topup_balance"] != float64(0) || subscription["invoice_topup_debt"] != float64(1) {
+		t.Fatalf("used refunded credit did not create debt: %d %v", status, subscription)
+	}
+	providerStatus, providerAmount = "Paid", "2.00"
+	secondTopupID := newID()
+	providerReference = "LP-" + strings.ReplaceAll(secondTopupID, "-", "")
+	if _, err = a.DB.Exec(ctx, `INSERT INTO billing_payments(id,business_id,created_by,reference,kind,invoice_quantity,amount_minor,status,poll_url) VALUES($1,$2,$3,$4,'invoice_topup',100,200,'pending',$5)`, secondTopupID, businessID, userID, providerReference, pollURL); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.verifyBillingPayment(ctx, secondTopupID); err != nil {
+		t.Fatalf("second top-up: %v", err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["invoice_topup_balance"] != float64(99) || subscription["invoice_topup_debt"] != float64(0) {
+		t.Fatalf("new top-up did not cover refunded usage: %d %v", status, subscription)
+	}
+	providerReference, providerAmount = reference, "3.00"
 	providerStatus = "Refunded"
 	if err = a.verifyBillingPayment(ctx, billingID); err != nil {
 		t.Fatalf("refund: %v", err)

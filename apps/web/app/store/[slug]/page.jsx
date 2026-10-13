@@ -37,11 +37,16 @@ export default async function StorePage({ params }) {
           className="store-banner"
           style={{ backgroundColor: `${business.theme_color}22` }}
         >
-          <span className="eyebrow">WELCOME TO OUR STOREFRONT</span>
+          <span className="eyebrow">{business.profile_type === "creator" ? "CREATOR PROFILE" : "WELCOME TO OUR STOREFRONT"}</span>
           <h1>{business.name}</h1>
           <p>
             {business.description || "Explore what we offer and get in touch."}
           </p>
+          {business.profile_type === "creator" && (business.creator_niche || business.creator_location) && (
+            <p className="helper">
+              {[business.creator_niche, business.creator_location].filter(Boolean).join(" · ")}
+            </p>
+          )}
           <div className="store-links">
             {business.whatsapp && (
               <a
@@ -65,10 +70,23 @@ export default async function StorePage({ params }) {
             ))}
           </div>
         </section>
+        {business.profile_type === "creator" && business.creator_portfolio_urls?.length > 0 && (
+          <section className="panel" style={{ marginTop: 24 }}>
+            <span className="eyebrow">SELECTED WORK</span>
+            <h2>Portfolio</h2>
+            <div className="store-links">
+              {business.creator_portfolio_urls.map((url, index) => (
+                <a key={url} href={url} target="_blank" rel="noopener noreferrer">
+                  View example {index + 1} ↗
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
         <div className="store-list-title">
           <div>
             <span className="eyebrow">EXPLORE</span>
-            <h2>What we offer</h2>
+            <h2>{business.profile_type === "creator" ? "Collaboration packages" : "What we offer"}</h2>
           </div>
           <span className="helper">
             {products.length} listing{products.length === 1 ? "" : "s"}
@@ -95,10 +113,10 @@ export default async function StorePage({ params }) {
                   <h3>{p.name}</h3>
                   <p>{p.description}</p>
                   <div className="store-item-price">
-                    {money(p.price_minor, business.currency)}
+                    {p.price_on_request ? "Request a quote" : money(p.price_minor, business.currency)}
                   </div>
                   <div className="store-item-actions">
-                    <PublicEnquiry slug={slug} product={p} />
+                    <PublicEnquiry slug={slug} product={p} creator={business.profile_type === "creator"} currency={business.currency} />
                     {business.whatsapp && (
                       <a
                         className="button button-light small"

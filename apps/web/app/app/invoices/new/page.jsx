@@ -20,7 +20,7 @@ function NewInvoiceContent() {
     [selected, setSelected] = useState(null),
     [creatingCustomer, setCreatingCustomer] = useState(false),
     [items, setItems] = useState([
-      { description: "", quantity: 1, unit_price: "" },
+      { description: params.get("item") || "", quantity: 1, unit_price: params.get("unit_price") || "" },
     ]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);

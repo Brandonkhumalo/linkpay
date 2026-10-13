@@ -49,9 +49,16 @@ export function Products({ page }) {
   const { business } = useWorkspace();
   const [key, refresh] = useState(0);
   const [editing, setEditing] = useState(null);
+  const [quote, setQuote] = useState(false);
+  const [kind, setKind] = useState("product");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const result = useResource(`/products?page=${page}`, key);
+  function openEditor(listing) {
+    setEditing(listing);
+    setQuote(Boolean(listing.price_on_request));
+    setKind(listing.kind || "product");
+  }
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -61,8 +68,9 @@ export function Products({ page }) {
     const body = {
       name: String(data.get("name")).trim(),
       description: String(data.get("description")).trim(),
-      kind: data.get("kind"),
-      price_minor: Math.round(Number(data.get("price")) * 100),
+      kind,
+      price_minor: quote ? 0 : Math.round(Number(data.get("price")) * 100),
+      price_on_request: quote,
       active: data.has("active"),
     };
     try {
@@ -118,7 +126,7 @@ export function Products({ page }) {
         title="Products & services"
         description="Show customers exactly what you offer."
         action={
-          <button className="button button-dark" onClick={() => setEditing({})}>
+          <button className="button button-dark" onClick={() => openEditor({})}>
             <Icon name="plus" size={16} /> Add listing
           </button>
         }
@@ -175,7 +183,7 @@ export function Products({ page }) {
                     </td>
                     <td>{p.kind}</td>
                     <td>
-                      <strong>{money(p.price_minor, business.currency)}</strong>
+                      <strong>{p.price_on_request ? "Request a quote" : money(p.price_minor, business.currency)}</strong>
                     </td>
                     <td>
                       <Badge>{p.active ? "active" : "hidden"}</Badge>
@@ -183,7 +191,7 @@ export function Products({ page }) {
                     <td>
                       <button
                         className="button button-light small"
-                        onClick={() => setEditing(p)}
+                        onClick={() => openEditor(p)}
                       >
                         Edit
                       </button>
@@ -203,7 +211,7 @@ export function Products({ page }) {
               page === 1 ? (
                 <button
                   className="button button-primary"
-                  onClick={() => setEditing({})}
+                  onClick={() => openEditor({})}
                 >
                   Add listing
                 </button>
@@ -240,7 +248,7 @@ export function Products({ page }) {
             <div className="form-grid">
               <label className="field">
                 Type
-                <select name="kind" defaultValue={editing.kind || "product"}>
+                <select name="kind" value={kind} onChange={(event) => { setKind(event.target.value); if (event.target.value !== "service") setQuote(false); }}>
                   <option value="product">Product</option>
                   <option value="service">Service</option>
                 </select>
@@ -258,10 +266,17 @@ export function Products({ page }) {
                       ? (editing.price_minor / 100).toFixed(2)
                       : ""
                   }
-                  required
+                  required={!quote}
+                  disabled={quote}
                 />
               </label>
             </div>
+            {kind === "service" && (
+              <label className="field checkbox-field">
+                <input type="checkbox" checked={quote} onChange={(event) => setQuote(event.target.checked)} />{" "}
+                Price on request for custom work
+              </label>
+            )}
             <label className="field">
               Image (JPEG or PNG, up to 3 MB)
               <input name="image" type="file" accept="image/jpeg,image/png" />
@@ -417,6 +432,7 @@ export function Customers({ page }) {
 }
 
 export function Enquiries({ page }) {
+  const { business } = useWorkspace();
   const result = useResource(`/enquiries?page=${page}`);
   const [notice, setNotice] = useState("");
   async function addCustomer(e) {
@@ -469,7 +485,15 @@ export function Enquiries({ page }) {
                       <strong>{e.name}</strong>
                       <small className="subline">{e.email || e.phone}</small>
                     </td>
-                    <td style={{ maxWidth: 300 }}>{e.message}</td>
+                    <td style={{ maxWidth: 360 }}>
+                      {e.brand_name && <strong>{e.brand_name}<br /></strong>}
+                      {e.product_name && <small className="subline">Package: {e.product_name}</small>}
+                      {e.message}
+                      {e.deliverables && <p><strong>Deliverables:</strong> {e.deliverables}</p>}
+                      {e.budget_minor != null && <p><strong>Budget:</strong> {money(e.budget_minor, business.currency)}</p>}
+                      {e.campaign_deadline && <p><strong>Target date:</strong> {date(e.campaign_deadline)}</p>}
+                      {e.usage_rights && <p><strong>Usage rights:</strong> {e.usage_rights}</p>}
+                    </td>
                     <td>{date(e.created_at)}</td>
                     <td>
                       <div className="list-actions">
@@ -478,9 +502,9 @@ export function Enquiries({ page }) {
                         </button>
                         <Link
                           className="table-action"
-                          href={`/app/invoices/new?name=${encodeURIComponent(e.name)}&email=${encodeURIComponent(e.email)}&phone=${encodeURIComponent(e.phone)}`}
+                          href={`/app/invoices/new?name=${encodeURIComponent(e.brand_name || e.name)}&email=${encodeURIComponent(e.email)}&phone=${encodeURIComponent(e.phone)}&item=${encodeURIComponent(e.product_name || "")}&unit_price=${e.product_name && !e.product_price_on_request ? (e.product_price_minor / 100).toFixed(2) : ""}`}
                         >
-                          Create invoice →
+                          Create invoice after agreement →
                         </Link>
                       </div>
                     </td>

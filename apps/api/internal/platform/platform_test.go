@@ -49,7 +49,7 @@ func TestPlanLimits(t *testing.T) {
 		plan               string
 		products, invoices int
 	}{
-		{"free", 5, 3}, {"starter", 30, 30}, {"business", 100, 100},
+		{"free", 5, 30}, {"starter", 30, 60}, {"business", 500, 500},
 	} {
 		if got := planProductLimit(tc.plan); got != tc.products {
 			t.Errorf("%s product limit = %d", tc.plan, got)

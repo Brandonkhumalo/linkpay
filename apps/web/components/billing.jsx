@@ -20,13 +20,13 @@ export default function BillingClient({ page }) {
     [busy, setBusy] = useState(false);
   const subscription = useResource("/subscription", key),
     history = useResource(`/billing/payments?page=${page}`, key);
-  async function checkout(plan, months) {
+  async function checkout(purchase) {
     setBusy(true);
     setNotice("");
     try {
       const result = await api("/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ plan, months }),
+        body: JSON.stringify(purchase),
       });
       window.location.assign(result.checkout_url);
     } catch (error) {
@@ -103,7 +103,7 @@ export default function BillingClient({ page }) {
               </div>
               <div className="usage-row">
                 <div>
-                  <strong>Invoices this month</strong>
+                  <strong>Plan invoices this month</strong>
                   <span>
                     {subscription.data.invoices_used} /{" "}
                     {subscription.data.invoice_monthly_limit}
@@ -117,6 +117,18 @@ export default function BillingClient({ page }) {
                   />
                 </div>
               </div>
+              <div className="usage-row">
+                <div>
+                  <strong>Purchased invoices available</strong>
+                  <span>{subscription.data.invoice_topup_balance}</span>
+                </div>
+                {subscription.data.invoice_topup_debt > 0 && (
+                  <p className="helper">
+                    {subscription.data.invoice_topup_debt} previously used
+                    invoices were refunded. Future top-ups cover those first.
+                  </p>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -125,7 +137,7 @@ export default function BillingClient({ page }) {
         <section className="plan-option">
           <span className="eyebrow">STARTER</span>
           <strong>USD 3 / month</strong>
-          <p>30 listings, 30 invoices monthly, 100 reminder emails.</p>
+          <p>30 listings, 60 invoices monthly, 100 reminder emails.</p>
           <p>150 MB image storage. USD 36 per year.</p>
           {subscription.data?.trial_active &&
             subscription.data.plan === "business" && (
@@ -139,14 +151,14 @@ export default function BillingClient({ page }) {
             <button
               className="button button-dark"
               disabled={busy || me.role !== "owner"}
-              onClick={() => checkout("starter", 1)}
+              onClick={() => checkout({ plan: "starter", months: 1 })}
             >
               Choose monthly
             </button>
             <button
               className="button button-light"
               disabled={busy || me.role !== "owner"}
-              onClick={() => checkout("starter", 12)}
+              onClick={() => checkout({ plan: "starter", months: 12 })}
             >
               USD 36 / year
             </button>
@@ -155,29 +167,58 @@ export default function BillingClient({ page }) {
         <section className="plan-option">
           <span className="eyebrow">BUSINESS</span>
           <strong>USD 5 / month</strong>
-          <p>100 listings, 100 invoices monthly, 500 reminder emails.</p>
+          <p>500 listings, 500 invoices monthly, 500 reminder emails.</p>
           <p>500 MB image storage. USD 60 per year.</p>
           <div className="stack" style={{ gap: 7 }}>
             <button
               className="button button-dark"
               disabled={busy || me.role !== "owner"}
-              onClick={() => checkout("business", 1)}
+              onClick={() => checkout({ plan: "business", months: 1 })}
             >
               Choose monthly
             </button>
             <button
               className="button button-light"
               disabled={busy || me.role !== "owner"}
-              onClick={() => checkout("business", 12)}
+              onClick={() => checkout({ plan: "business", months: 12 })}
             >
               USD 60 / year
             </button>
           </div>
         </section>
       </div>
+      <section className="panel" style={{ marginTop: 16 }}>
+        <h2>Extra invoices</h2>
+        <p>
+          Your monthly plan invoices are used first. Purchased invoices stay
+          available across months until used, even if your plan changes.
+        </p>
+        <div className="plan-options">
+          <section className="plan-option">
+            <strong>30 invoices · USD 1</strong>
+            <button
+              className="button button-dark"
+              disabled={busy || me.role !== "owner"}
+              onClick={() => checkout({ topup_invoices: 30 })}
+            >
+              Buy 30 invoices
+            </button>
+          </section>
+          <section className="plan-option">
+            <strong>100 invoices · USD 2</strong>
+            <button
+              className="button button-dark"
+              disabled={busy || me.role !== "owner"}
+              onClick={() => checkout({ topup_invoices: 100 })}
+            >
+              Buy 100 invoices
+            </button>
+          </section>
+        </div>
+      </section>
       <p className="helper" style={{ margin: "17px 0 28px" }}>
-        Checkout opens on Paynow Zimbabwe. Your plan changes only after the
-        payment is verified. Only the business owner can purchase a plan.
+        Checkout opens on Paynow Zimbabwe. Your plan or invoice top-up activates
+        only after payment is verified. Only the business owner can purchase.
       </p>
       <section className="panel">
         <h2>Payment history</h2>
@@ -190,7 +231,7 @@ export default function BillingClient({ page }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Plan</th>
+                  <th>Purchase</th>
                   <th>Amount</th>
                   <th>Status</th>
                   <th>Created</th>
@@ -201,10 +242,16 @@ export default function BillingClient({ page }) {
                 {history.data.items.map((p) => (
                   <tr key={p.id}>
                     <td>
-                      <strong>{p.plan}</strong>
-                      <small className="subline">
-                        {p.months} month{p.months === 1 ? "" : "s"}
-                      </small>
+                      <strong>
+                        {p.kind === "invoice_topup"
+                          ? `${p.invoice_quantity} invoices`
+                          : p.plan}
+                      </strong>
+                      {p.kind === "subscription" && (
+                        <small className="subline">
+                          {p.months} month{p.months === 1 ? "" : "s"}
+                        </small>
+                      )}
                     </td>
                     <td>{money(p.amount_minor)}</td>
                     <td>
@@ -229,10 +276,8 @@ export default function BillingClient({ page }) {
           </div>
         ) : (
           <Empty
-            title={
-              page > 1 ? "No payments on this page" : "No plan payments yet"
-            }
-            description="Choose a paid plan above when you need more capacity."
+            title={page > 1 ? "No payments on this page" : "No payments yet"}
+            description="Choose a plan or buy extra invoices above when you need more capacity."
           />
         )}
         <Pagination base="/app/billing" data={history.data} />

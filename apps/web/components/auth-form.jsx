@@ -6,16 +6,12 @@ import { useRouter } from "next/navigation";
 import { api, errorMessage } from "../lib/api";
 import { Brand, Notice } from "./ui";
 
-export default function AuthForm({
-  mode,
-  token,
-  initialTrialPlan = "starter",
-}) {
+export default function AuthForm({ mode, token, initialPlan = "free" }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
-  const [trialPlan, setTrialPlan] = useState(initialTrialPlan);
+  const [selectedPlan, setSelectedPlan] = useState(initialPlan);
   const titles = {
     login: "Welcome back",
     register: "Create your account",
@@ -25,7 +21,7 @@ export default function AuthForm({
   const subtitles = {
     login: "Log in to see what is happening with your business.",
     register:
-      "Choose a paid package to try free for exactly 168 hours. No payment details needed.",
+      "Start on Free or try a paid package for exactly 168 hours. No payment details needed.",
     forgot: "Enter your email and we will send a 30-minute reset link.",
     reset: "Use a password of at least 12 characters.",
   };
@@ -137,44 +133,63 @@ export default function AuthForm({
               {mode === "register" && (
                 <>
                   <fieldset className="trial-choice">
-                    <legend>Choose your 7-day trial</legend>
+                    <legend>Choose how to start</legend>
                     <p>
-                      After 168 hours, your account continues on Free unless you
-                      buy a plan. There is no automatic charge.
+                      Starter and Business trials last exactly 168 hours, then
+                      move to Free unless you buy a plan. There is no automatic
+                      charge.
                     </p>
                     <div className="trial-options">
                       <label
-                        className={`trial-option ${trialPlan === "starter" ? "selected" : ""}`}
+                        className={`trial-option ${selectedPlan === "free" ? "selected" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="trial_plan"
+                          value="free"
+                          checked={selectedPlan === "free"}
+                          onChange={() => setSelectedPlan("free")}
+                        />
+                        <span>
+                          <strong>Free</strong>
+                          <small>
+                            5 listings · 30 invoices/month · 25 MB images · No
+                            trial expiry
+                          </small>
+                        </span>
+                      </label>
+                      <label
+                        className={`trial-option ${selectedPlan === "starter" ? "selected" : ""}`}
                       >
                         <input
                           type="radio"
                           name="trial_plan"
                           value="starter"
-                          checked={trialPlan === "starter"}
-                          onChange={() => setTrialPlan("starter")}
+                          checked={selectedPlan === "starter"}
+                          onChange={() => setSelectedPlan("starter")}
                         />
                         <span>
                           <strong>Starter</strong>
                           <small>
-                            30 listings · 30 invoices/month · 100 reminder
+                            30 listings · 60 invoices/month · 100 reminder
                             emails/month · 150 MB images
                           </small>
                         </span>
                       </label>
                       <label
-                        className={`trial-option ${trialPlan === "business" ? "selected" : ""}`}
+                        className={`trial-option ${selectedPlan === "business" ? "selected" : ""}`}
                       >
                         <input
                           type="radio"
                           name="trial_plan"
                           value="business"
-                          checked={trialPlan === "business"}
-                          onChange={() => setTrialPlan("business")}
+                          checked={selectedPlan === "business"}
+                          onChange={() => setSelectedPlan("business")}
                         />
                         <span>
                           <strong>Business</strong>
                           <small>
-                            100 listings · 100 invoices/month · 500 reminder
+                            500 listings · 500 invoices/month · 500 reminder
                             emails/month · 500 MB images
                           </small>
                         </span>
@@ -182,14 +197,14 @@ export default function AuthForm({
                     </div>
                   </fieldset>
                   <label className="field">
-                    Business name
+                    Business or creator name
                     <input
                       name="business_name"
                       required
                       minLength={2}
                       maxLength={120}
                       autoComplete="organization"
-                      placeholder="Your business name"
+                      placeholder="Your business or creator name"
                     />
                   </label>
                   <label className="field">
@@ -203,7 +218,7 @@ export default function AuthForm({
                       placeholder="your-business"
                     />
                     <span className="helper">
-                      Lowercase letters, numbers and hyphens only. Your shop
+                      Lowercase letters, numbers and hyphens only. Your profile
                       stays private until you publish it.
                     </span>
                   </label>
@@ -248,7 +263,9 @@ export default function AuthForm({
                 {busy
                   ? "Please wait…"
                   : mode === "register"
-                    ? "Start 7-day free trial →"
+                    ? selectedPlan === "free"
+                      ? "Create free account →"
+                      : "Start 7-day free trial →"
                     : mode === "login"
                       ? "Log in →"
                       : mode === "forgot"

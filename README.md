@@ -12,8 +12,10 @@ LinkPay is a multi-tenant storefront and invoicing application built with a Go A
 - Overview totals, monthly usage, and aggregate admin monitoring protected by an additional TOTP code.
 - Routed, responsive Next.js landing, authentication, public storefront and invoice pages, and a dedicated workspace with separate pages for storefront, products, enquiries, customers, invoices, reminders, billing, and settings.
 - Server-backed pagination with Previous and Next on public shops and private products, customers, enquiries, invoices, reminder deliveries, and billing payments. Each list returns `{items, page, has_next, has_prev}` with 20 records per page.
-- Paynow Zimbabwe hosted checkout for prepaid Starter and Business plans (monthly or annual), signed callbacks, server-side status verification, payment history, and expiring entitlements.
+- Paynow Zimbabwe hosted checkout for prepaid Starter and Business plans (monthly or annual) and non-expiring invoice top-ups, signed callbacks, server-side status verification, payment history, and expiring plan entitlements.
 - HTTPS social links on public storefronts.
+- Optional creator profiles with niche, location, social and portfolio links, discoverable in the public directory. Creators can publish with a contact email or WhatsApp number.
+- Service packages can use a fixed price or "Request a quote". Brand partners can send structured briefs with deliverables, optional budget, target date, and usage rights; creators review them in Enquiries and can start an invoice after agreeing terms.
 - JPEG/PNG product images, re-encoded to remove metadata, with tenant-scoped upload and viewing rules. The Compose deployment persists images in `linkpay_media`; storage allowances are 25 MB Free, 150 MB Starter, and 500 MB Business.
 
 Public storefront and invoice pages are server-rendered by Next.js. The browser uses same-origin API requests for authenticated workspace actions. Private list responses are paginated by the API, so older records remain reachable.
@@ -28,19 +30,23 @@ The migration service runs before the API and worker. It records applied version
 
 ## Paynow billing
 
-New accounts choose a Starter or Business trial at signup. The trial starts at the registration transaction's PostgreSQL timestamp and ends exactly **168 hours** later. No payment method is required. If no paid purchase is verified, access automatically falls back to Free; existing accounts are not granted a trial retroactively. Paid plans renew manually and are never charged automatically.
+New accounts can start directly on Free without a trial, or choose a Starter or Business trial at signup. A paid plan trial starts at the registration transaction's PostgreSQL timestamp and ends exactly **168 hours** later. No payment method is required. If no paid purchase is verified, trial access automatically falls back to Free; existing accounts are not granted a trial retroactively. Paid plans renew manually and are never charged automatically.
 
 | Package | Price | Listings | Invoices per month | Reminder emails per month | Image storage |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Free | USD 0 | 5 | 3 | None | 25 MB |
-| Starter | USD 3/month or USD 36/year | 30 | 30 | 100 | 150 MB |
-| Business | USD 5/month or USD 60/year | 100 | 100 | 500 | 500 MB |
+| Free | USD 0 | 5 | 30 | None | 25 MB |
+| Starter | USD 3/month or USD 36/year | 30 | 60 | 100 | 150 MB |
+| Business | USD 5/month or USD 60/year | 500 | 500 | 500 | 500 MB |
 
-All packages include the storefront, customer and enquiry records, invoices, and manual payment recording. Automated reminder delivery requires configured SMTP. A verified paid purchase during a trial changes the active package immediately and extends the paid expiry from the later of payment verification or the current package expiry. If the paid purchase is refunded while the original trial is still within its 168-hour window, the remaining trial is restored.
+All packages include the storefront, customer and enquiry records, invoices, and manual payment recording. Automated reminder delivery requires configured SMTP. A verified paid plan purchase during a trial changes the active package immediately and extends the paid expiry from the later of payment verification or the current package expiry. If the paid plan purchase is refunded while the original trial is still within its 168-hour window, the remaining trial is restored.
+
+Owners can also buy **30 extra invoices for USD 1** or **100 for USD 2** through Paynow. Verified top-ups remain on the business account until used and do not expire or reset monthly. Invoices use the current month's package allowance first, then purchased invoices. Refunded or disputed top-ups are removed from available credit; if their invoices were already used, future top-ups cover that deficit first. The billing page shows monthly package usage and the separate purchased balance.
 
 Create an **Advanced Integration** in Paynow, then set `PAYNOW_INTEGRATION_ID` and `PAYNOW_INTEGRATION_KEY` in `.env`. Set `PUBLIC_URL` to the public HTTPS origin before testing checkout; Paynow must reach `/api/v1/billing/paynow/result`. Only business owners can start checkout. LinkPay validates Paynow's SHA-512 response hash, polls Paynow on important updates, verifies the reference and amount, and grants time-limited access in a database transaction. A browser return does not grant access. Lost callbacks can be recovered from the payment history or by the worker's delayed reconciliation.
 
 Paid plans are **prepaid and manually renewed**. The integration does not tokenize payment instruments or attempt automatic recurring charges. Prices are USD 3/5 monthly and USD 36/60 annually; confirm the merchant integration's supported settlement currency and fees with Paynow before launch. Customer invoice payments remain merchant-managed and are recorded manually, as specified for the initial customer journey.
+
+Creator collaboration is a direct enquiry and invoicing workflow. LinkPay does not verify audience metrics, broker agreements, hold funds in escrow, or automatically collect brand payments. Portfolio links are supplied by creators; brands should confirm deliverables and rights before paying.
 
 Paynow starts new integrations in test mode. Complete Paynow's fake success and cancellation flows and request live activation using your merchant account. Test with a publicly reachable HTTPS domain or tunnel; checkout is deliberately unavailable when `PUBLIC_URL` is HTTP. See [Paynow test mode](https://developers.paynow.co.zw/docs/paynow/test_mode/) and [integration setup](https://developers.paynow.co.zw/docs/paynow/integration_generation/).
 
