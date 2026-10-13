@@ -165,11 +165,12 @@ func (a *App) checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var currentPlan string
-	if err := a.DB.QueryRow(r.Context(), `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END FROM businesses WHERE id=$1`, who(r).BusinessID).Scan(&currentPlan); err != nil {
+	var trialActive bool
+	if err := a.DB.QueryRow(r.Context(), `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,COALESCE(trial_expires_at>now() AND plan=trial_plan AND plan_expires_at=trial_expires_at,false) FROM businesses WHERE id=$1`, who(r).BusinessID).Scan(&currentPlan, &trialActive); err != nil {
 		unavailable(w, r, err)
 		return
 	}
-	if currentPlan == "business" && input.Plan == "starter" {
+	if currentPlan == "business" && input.Plan == "starter" && !trialActive {
 		fail(w, 409, "Wait until the Business plan expires before choosing Starter")
 		return
 	}
@@ -347,7 +348,7 @@ func (a *App) verifyBillingPayment(ctx context.Context, id string) error {
 			return previousErr
 		}
 		if errors.Is(previousErr, pgx.ErrNoRows) {
-			_, err = tx.Exec(ctx, `UPDATE businesses SET plan='free',plan_expires_at=NULL WHERE id=$1 AND plan_expires_at=$2`, businessID, *granted)
+			_, err = tx.Exec(ctx, `UPDATE businesses SET plan=CASE WHEN trial_expires_at>now() THEN trial_plan ELSE 'free' END,plan_expires_at=CASE WHEN trial_expires_at>now() THEN trial_expires_at ELSE NULL END WHERE id=$1 AND plan_expires_at=$2`, businessID, *granted)
 		} else {
 			_, err = tx.Exec(ctx, `UPDATE businesses SET plan=$3,plan_expires_at=$4 WHERE id=$1 AND plan_expires_at=$2`, businessID, *granted, previousPlan, previousUntil)
 		}

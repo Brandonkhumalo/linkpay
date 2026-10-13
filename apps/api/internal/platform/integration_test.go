@@ -105,15 +105,45 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 		}
 		return res.StatusCode, data, session
 	}
-	register := func(email, slug string) *http.Cookie {
-		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": email, "password": "a-long-test-password", "business_name": slug, "slug": slug}, nil)
+	register := func(email, slug, trialPlan string) *http.Cookie {
+		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": email, "password": "a-long-test-password", "business_name": slug, "slug": slug, "trial_plan": trialPlan}, nil)
 		if status != 201 || cookie == nil {
 			t.Fatalf("register %s: %d", email, status)
 		}
 		return cookie
 	}
-	aCookie := register("tenant-a@example.test", "tenant-a")
-	bCookie := register("tenant-b@example.test", "tenant-b")
+	status, _, _ := request("POST", "/api/v1/auth/register", map[string]any{"email": "invalid-trial@example.test", "password": "a-long-test-password", "business_name": "Invalid Trial", "slug": "invalid-trial", "trial_plan": "free"}, nil)
+	if status != 400 {
+		t.Fatalf("invalid trial plan accepted: %d", status)
+	}
+	aCookie := register("tenant-a@example.test", "tenant-a", "starter")
+	bCookie := register("tenant-b@example.test", "tenant-b", "business")
+	for _, trial := range []struct {
+		slug, plan string
+		limit      float64
+		cookie     *http.Cookie
+	}{{"tenant-a", "starter", 30, aCookie}, {"tenant-b", "business", 100, bCookie}} {
+		var storedPlan, trialPlan string
+		var started, expires, planExpires time.Time
+		var seconds float64
+		if err = a.DB.QueryRow(ctx, `SELECT plan,trial_plan,trial_started_at,trial_expires_at,plan_expires_at,EXTRACT(EPOCH FROM (trial_expires_at-trial_started_at))::double precision FROM businesses WHERE slug=$1`, trial.slug).Scan(&storedPlan, &trialPlan, &started, &expires, &planExpires, &seconds); err != nil {
+			t.Fatal(err)
+		}
+		if storedPlan != trial.plan || trialPlan != trial.plan || seconds != 168*60*60 || !expires.Equal(planExpires) {
+			t.Fatalf("incorrect %s trial window: %s %s %v %v %v", trial.slug, storedPlan, trialPlan, started, expires, planExpires)
+		}
+		status, subscription, _ := request("GET", "/api/v1/subscription", nil, trial.cookie)
+		if status != 200 || subscription["plan"] != trial.plan || subscription["trial_active"] != true || subscription["product_limit"] != trial.limit {
+			t.Fatalf("%s subscription: %d %v", trial.slug, status, subscription)
+		}
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE businesses SET trial_started_at=now()-interval '169 hours',trial_expires_at=now()-interval '1 hour',plan_expires_at=now()-interval '1 hour' WHERE slug='tenant-b'`); err != nil {
+		t.Fatal(err)
+	}
+	status, expiredTrial, _ := request("GET", "/api/v1/subscription", nil, bCookie)
+	if status != 200 || expiredTrial["plan"] != "free" || expiredTrial["trial_active"] != false || expiredTrial["product_limit"] != float64(5) {
+		t.Fatalf("unpaid trial did not fall back to Free: %d %v", status, expiredTrial)
+	}
 	status, directory, _ := request("GET", "/api/v1/public/stores", nil, nil)
 	if status != 200 || len(directory["items"].([]any)) != 0 {
 		t.Fatalf("draft storefront visible in directory: %d %v", status, directory)
@@ -252,6 +282,10 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if paidPlan != "starter" || !paidUntil.After(time.Now()) {
 		t.Fatal("verified payment did not grant Starter")
 	}
+	status, subscription, _ := request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["trial_active"] != false {
+		t.Fatalf("paid subscription still presented as a trial: %d %v", status, subscription)
+	}
 	if err = a.verifyBillingPayment(ctx, billingID); err != nil {
 		t.Fatalf("duplicate callback: %v", err)
 	}
@@ -266,11 +300,19 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if err = a.verifyBillingPayment(ctx, billingID); err != nil {
 		t.Fatalf("refund: %v", err)
 	}
-	if err = a.DB.QueryRow(ctx, `SELECT plan FROM businesses WHERE id=$1`, businessID).Scan(&paidPlan); err != nil {
+	var restoredUntil, trialUntil time.Time
+	if err = a.DB.QueryRow(ctx, `SELECT plan,plan_expires_at,trial_expires_at FROM businesses WHERE id=$1`, businessID).Scan(&paidPlan, &restoredUntil, &trialUntil); err != nil {
 		t.Fatal(err)
 	}
-	if paidPlan != "free" {
-		t.Fatal("refund did not revoke access")
+	if paidPlan != "starter" || !restoredUntil.Equal(trialUntil) {
+		t.Fatal("refund did not restore the remaining trial")
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE businesses SET trial_started_at=now()-interval '169 hours',trial_expires_at=now()-interval '1 hour',plan_expires_at=now()-interval '1 hour' WHERE id=$1`, businessID); err != nil {
+		t.Fatal(err)
+	}
+	status, subscription, _ = request("GET", "/api/v1/subscription", nil, aCookie)
+	if status != 200 || subscription["plan"] != "free" || subscription["trial_active"] != false || subscription["product_limit"] != float64(5) {
+		t.Fatalf("expired trial did not fall back to Free: %d %v", status, subscription)
 	}
 	resetToken := randomHex(32)
 	if _, err = a.DB.Exec(ctx, `INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')`, hash(resetToken), userID); err != nil {

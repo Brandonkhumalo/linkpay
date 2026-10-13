@@ -233,7 +233,8 @@ export default function Home() {
               Start small. <em>Grow freely.</em>
             </h2>
             <p>
-              Get started for free. Upgrade when your business needs more room.
+              Try Starter or Business free for exactly 168 hours. Continue on
+              Free afterward unless you choose a paid plan.
             </p>
           </div>
           <div className="pricing-cards">
@@ -248,9 +249,10 @@ export default function Home() {
                 <li>5 products or services</li>
                 <li>3 invoices per month</li>
                 <li>Your own shareable storefront</li>
+                <li>25 MB image storage</li>
               </ul>
               <Link className="button button-outline" href="/register">
-                Start for free <Icon name="arrow" size={16} />
+                Start a free trial <Icon name="arrow" size={16} />
               </Link>
             </article>
             <article className="featured-plan">
@@ -265,9 +267,13 @@ export default function Home() {
                 <li>30 products or services</li>
                 <li>30 invoices per month</li>
                 <li>100 reminder emails per month</li>
+                <li>150 MB image storage</li>
               </ul>
-              <Link className="button button-primary" href="/register">
-                Get started <Icon name="arrow" size={16} />
+              <Link
+                className="button button-primary"
+                href="/register?trial=starter"
+              >
+                Try Starter for 7 days <Icon name="arrow" size={16} />
               </Link>
             </article>
             <article>
@@ -281,15 +287,21 @@ export default function Home() {
                 <li>100 products or services</li>
                 <li>100 invoices per month</li>
                 <li>500 reminder emails per month</li>
+                <li>500 MB image storage</li>
               </ul>
-              <Link className="button button-outline" href="/register">
-                Get started <Icon name="arrow" size={16} />
+              <Link
+                className="button button-outline"
+                href="/register?trial=business"
+              >
+                Try Business for 7 days <Icon name="arrow" size={16} />
               </Link>
             </article>
           </div>
           <p className="pricing-note">
+            Trials start at signup, last exactly 168 hours, and require no
+            payment details. They end on the Free plan unless you buy a plan.
             Paid plans use Paynow Zimbabwe checkout and renew manually. Prices
-            shown in USD.
+            shown in USD; annual prices are $36 Starter and $60 Business.
           </p>
         </section>
         <section className="final-cta">

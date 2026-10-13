@@ -115,7 +115,10 @@ func (a *App) subscription(w http.ResponseWriter, r *http.Request) {
 	var plan string
 	var products, monthly int
 	var expires *time.Time
-	err := a.DB.QueryRow(r.Context(), `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,plan_expires_at FROM businesses WHERE id=$1`, who(r).BusinessID).Scan(&plan, &expires)
+	var trialPlan *string
+	var trialStarted, trialExpires *time.Time
+	var trialActive bool
+	err := a.DB.QueryRow(r.Context(), `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,plan_expires_at,trial_plan,trial_started_at,trial_expires_at,COALESCE(trial_expires_at>now() AND plan=trial_plan AND plan_expires_at=trial_expires_at,false) FROM businesses WHERE id=$1`, who(r).BusinessID).Scan(&plan, &expires, &trialPlan, &trialStarted, &trialExpires, &trialActive)
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -128,5 +131,5 @@ func (a *App) subscription(w http.ResponseWriter, r *http.Request) {
 		unavailable(w, r, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"plan": plan, "expires_at": expires, "product_limit": planProductLimit(plan), "invoice_monthly_limit": planInvoiceLimit(plan), "products_used": products, "invoices_used": monthly, "period_start": time.Now().UTC().Format("2006-01")})
+	writeJSON(w, 200, map[string]any{"plan": plan, "expires_at": expires, "trial_plan": trialPlan, "trial_started_at": trialStarted, "trial_expires_at": trialExpires, "trial_active": trialActive, "product_limit": planProductLimit(plan), "invoice_monthly_limit": planInvoiceLimit(plan), "products_used": products, "invoices_used": monthly, "period_start": time.Now().UTC().Format("2006-01")})
 }

@@ -6,11 +6,16 @@ import { useRouter } from "next/navigation";
 import { api, errorMessage } from "../lib/api";
 import { Brand, Notice } from "./ui";
 
-export default function AuthForm({ mode, token }) {
+export default function AuthForm({
+  mode,
+  token,
+  initialTrialPlan = "starter",
+}) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [trialPlan, setTrialPlan] = useState(initialTrialPlan);
   const titles = {
     login: "Welcome back",
     register: "Create your account",
@@ -19,7 +24,8 @@ export default function AuthForm({ mode, token }) {
   };
   const subtitles = {
     login: "Log in to see what is happening with your business.",
-    register: "Create invoices now. Publish a shop whenever you're ready.",
+    register:
+      "Choose a paid package to try free for exactly 168 hours. No payment details needed.",
     forgot: "Enter your email and we will send a 30-minute reset link.",
     reset: "Use a password of at least 12 characters.",
   };
@@ -51,6 +57,7 @@ export default function AuthForm({ mode, token }) {
             password: fields.password,
             business_name: fields.business_name,
             slug: fields.slug,
+            trial_plan: fields.trial_plan,
           }),
         });
         router.replace("/app");
@@ -129,6 +136,51 @@ export default function AuthForm({ mode, token }) {
             <form onSubmit={submit}>
               {mode === "register" && (
                 <>
+                  <fieldset className="trial-choice">
+                    <legend>Choose your 7-day trial</legend>
+                    <p>
+                      After 168 hours, your account continues on Free unless you
+                      buy a plan. There is no automatic charge.
+                    </p>
+                    <div className="trial-options">
+                      <label
+                        className={`trial-option ${trialPlan === "starter" ? "selected" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="trial_plan"
+                          value="starter"
+                          checked={trialPlan === "starter"}
+                          onChange={() => setTrialPlan("starter")}
+                        />
+                        <span>
+                          <strong>Starter</strong>
+                          <small>
+                            30 listings · 30 invoices/month · 100 reminder
+                            emails/month · 150 MB images
+                          </small>
+                        </span>
+                      </label>
+                      <label
+                        className={`trial-option ${trialPlan === "business" ? "selected" : ""}`}
+                      >
+                        <input
+                          type="radio"
+                          name="trial_plan"
+                          value="business"
+                          checked={trialPlan === "business"}
+                          onChange={() => setTrialPlan("business")}
+                        />
+                        <span>
+                          <strong>Business</strong>
+                          <small>
+                            100 listings · 100 invoices/month · 500 reminder
+                            emails/month · 500 MB images
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                  </fieldset>
                   <label className="field">
                     Business name
                     <input
@@ -196,7 +248,7 @@ export default function AuthForm({ mode, token }) {
                 {busy
                   ? "Please wait…"
                   : mode === "register"
-                    ? "Create free account →"
+                    ? "Start 7-day free trial →"
                     : mode === "login"
                       ? "Log in →"
                       : mode === "forgot"
@@ -207,7 +259,7 @@ export default function AuthForm({ mode, token }) {
           )}
           {mode === "login" && (
             <div className="auth-footer">
-              No account yet? <Link href="/register">Get started free</Link>
+              No account yet? <Link href="/register">Try a paid plan free</Link>
             </div>
           )}
           {mode === "reset" && success && (

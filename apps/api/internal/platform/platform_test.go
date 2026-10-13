@@ -7,10 +7,10 @@ import (
 )
 
 func TestRegistrationPayloadMatchesWebForm(t *testing.T) {
-	r := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`{"email":"owner@example.test","password":"long-enough-password","business_name":"Example Shop","slug":"example-shop"}`))
+	r := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`{"email":"owner@example.test","password":"long-enough-password","business_name":"Example Shop","slug":"example-shop","trial_plan":"starter"}`))
 	w := httptest.NewRecorder()
 	var input registerInput
-	if !decode(w, r, &input) || input.BusinessName != "Example Shop" {
+	if !decode(w, r, &input) || input.BusinessName != "Example Shop" || input.TrialPlan != "starter" {
 		t.Fatalf("registration form rejected: status=%d input=%+v", w.Code, input)
 	}
 }

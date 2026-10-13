@@ -1543,6 +1543,63 @@ img {
 .auth-card {
   width: min(400px, 100%);
 }
+.trial-choice {
+  border: 0;
+  margin: 0 0 20px;
+  padding: 0;
+}
+.trial-choice legend {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--forest);
+  margin-bottom: 7px;
+}
+.trial-choice > p {
+  color: #819488;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0 0 10px;
+}
+.trial-options {
+  display: grid;
+  gap: 9px;
+}
+.trial-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  padding: 12px;
+  cursor: pointer;
+}
+.trial-option.selected {
+  border-color: #6d9c62;
+  background: #f0f7ea;
+}
+.trial-option:focus-within {
+  outline: 2px solid #6d9c62;
+  outline-offset: 2px;
+}
+.trial-option input {
+  flex: 0 0 auto;
+  margin: 3px 0 0;
+  accent-color: #386a48;
+}
+.trial-option strong,
+.trial-option small {
+  display: block;
+}
+.trial-option strong {
+  font-size: 12px;
+  color: var(--forest);
+}
+.trial-option small {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #718575;
+  margin-top: 3px;
+}
 .auth-card .eyebrow {
   margin-bottom: 8px;
 }

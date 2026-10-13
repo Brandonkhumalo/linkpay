@@ -61,7 +61,13 @@ export default function BillingClient({ page }) {
       <section className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-head">
           <h2>Current plan</h2>
-          {subscription.data && <Badge>{subscription.data.plan}</Badge>}
+          {subscription.data && (
+            <Badge>
+              {subscription.data.trial_active
+                ? `${subscription.data.plan} trial`
+                : subscription.data.plan}
+            </Badge>
+          )}
         </div>
         {subscription.loading ? (
           <Loading />
@@ -70,9 +76,13 @@ export default function BillingClient({ page }) {
         ) : (
           <>
             <p>
-              {subscription.data.plan === "free"
-                ? "Your free plan is active."
-                : `Your ${subscription.data.plan} plan is active${subscription.data.expires_at ? ` through ${date(subscription.data.expires_at)}` : ""}.`}
+              {subscription.data.trial_active
+                ? `Your ${subscription.data.trial_plan} trial ends ${new Date(subscription.data.trial_expires_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}. Your account moves to Free automatically unless you buy a plan.`
+                : subscription.data.plan === "free"
+                  ? subscription.data.trial_expires_at
+                    ? "Your trial has ended. Your Free plan is active."
+                    : "Your Free plan is active."
+                  : `Your ${subscription.data.plan} plan is active${subscription.data.expires_at ? ` through ${date(subscription.data.expires_at)}` : ""}.`}
             </p>
             <div className="form-grid">
               <div className="usage-row">
@@ -116,6 +126,15 @@ export default function BillingClient({ page }) {
           <span className="eyebrow">STARTER</span>
           <strong>USD 3 / month</strong>
           <p>30 listings, 30 invoices monthly, 100 reminder emails.</p>
+          <p>150 MB image storage. USD 36 per year.</p>
+          {subscription.data?.trial_active &&
+            subscription.data.plan === "business" && (
+              <p>
+                Buying Starter during your Business trial changes your limits to
+                Starter after payment is verified. The paid term extends from
+                the trial end.
+              </p>
+            )}
           <div className="stack" style={{ gap: 7 }}>
             <button
               className="button button-dark"
@@ -137,6 +156,7 @@ export default function BillingClient({ page }) {
           <span className="eyebrow">BUSINESS</span>
           <strong>USD 5 / month</strong>
           <p>100 listings, 100 invoices monthly, 500 reminder emails.</p>
+          <p>500 MB image storage. USD 60 per year.</p>
           <div className="stack" style={{ gap: 7 }}>
             <button
               className="button button-dark"

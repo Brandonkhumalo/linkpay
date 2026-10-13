@@ -28,6 +28,16 @@ The migration service runs before the API and worker. It records applied version
 
 ## Paynow billing
 
+New accounts choose a Starter or Business trial at signup. The trial starts at the registration transaction's PostgreSQL timestamp and ends exactly **168 hours** later. No payment method is required. If no paid purchase is verified, access automatically falls back to Free; existing accounts are not granted a trial retroactively. Paid plans renew manually and are never charged automatically.
+
+| Package | Price | Listings | Invoices per month | Reminder emails per month | Image storage |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Free | USD 0 | 5 | 3 | None | 25 MB |
+| Starter | USD 3/month or USD 36/year | 30 | 30 | 100 | 150 MB |
+| Business | USD 5/month or USD 60/year | 100 | 100 | 500 | 500 MB |
+
+All packages include the storefront, customer and enquiry records, invoices, and manual payment recording. Automated reminder delivery requires configured SMTP. A verified paid purchase during a trial changes the active package immediately and extends the paid expiry from the later of payment verification or the current package expiry. If the paid purchase is refunded while the original trial is still within its 168-hour window, the remaining trial is restored.
+
 Create an **Advanced Integration** in Paynow, then set `PAYNOW_INTEGRATION_ID` and `PAYNOW_INTEGRATION_KEY` in `.env`. Set `PUBLIC_URL` to the public HTTPS origin before testing checkout; Paynow must reach `/api/v1/billing/paynow/result`. Only business owners can start checkout. LinkPay validates Paynow's SHA-512 response hash, polls Paynow on important updates, verifies the reference and amount, and grants time-limited access in a database transaction. A browser return does not grant access. Lost callbacks can be recovered from the payment history or by the worker's delayed reconciliation.
 
 Paid plans are **prepaid and manually renewed**. The integration does not tokenize payment instruments or attempt automatic recurring charges. Prices are USD 3/5 monthly and USD 36/60 annually; confirm the merchant integration's supported settlement currency and fees with Paynow before launch. Customer invoice payments remain merchant-managed and are recorded manually, as specified for the initial customer journey.
