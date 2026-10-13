@@ -16,7 +16,7 @@ services:
   migrate:
     build:
       context: .
-      dockerfile: deployments/Dockerfile
+      dockerfile: Dockerfile
     command: ["/app/bin/migrate"]
     environment:
       DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL}
@@ -26,7 +26,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: deployments/Dockerfile
+      dockerfile: Dockerfile
     restart: unless-stopped
     volumes:
       - linkpay_media:/app/media
@@ -69,7 +69,7 @@ services:
   worker:
     build:
       context: .
-      dockerfile: deployments/Dockerfile
+      dockerfile: Dockerfile
     command: ["/app/bin/worker"]
     restart: unless-stopped
     environment:
