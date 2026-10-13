@@ -4,14 +4,14 @@ LinkPay is a multi-tenant storefront and invoicing application built with a Go A
 
 ## Included in this build
 
-- Registration, password login and reset by email, server-side sessions, business profiles, and publishable storefront slugs.
-- Product and service listings with plan limits; public WhatsApp links and structured customer enquiries.
+- Registration, password login and reset by email, server-side sessions, business profiles, and optional storefront publishing. Registration reserves a storefront slug; invoice-only accounts can leave it unpublished.
+- Product and service listings with plan limits; WhatsApp links to the shop's international-format number, structured customer enquiries, and a public directory of published shops.
 - Customer directory, draft invoices, numbered and branded PDF invoices, private issue links, and revocation when voiding an unpaid invoice.
 - Atomic manual payment recording with idempotency keys, partial balances, derived statuses, and audit records.
 - Email reminder scheduling for paid-plan tenants with a PostgreSQL job table, retry limits, and delivery history.
 - Overview totals, monthly usage, and aggregate admin monitoring protected by an additional TOTP code.
 - Routed, responsive Next.js landing, authentication, public storefront and invoice pages, and a dedicated workspace with separate pages for storefront, products, enquiries, customers, invoices, reminders, billing, and settings.
-- Server-backed pagination with Previous and Next on private products, customers, enquiries, invoices, reminder deliveries, and billing payments. Each list returns `{items, page, has_next, has_prev}` with 20 records per page.
+- Server-backed pagination with Previous and Next on public shops and private products, customers, enquiries, invoices, reminder deliveries, and billing payments. Each list returns `{items, page, has_next, has_prev}` with 20 records per page.
 - Paynow Zimbabwe hosted checkout for prepaid Starter and Business plans (monthly or annual), signed callbacks, server-side status verification, payment history, and expiring entitlements.
 - HTTPS social links on public storefronts.
 - JPEG/PNG product images, re-encoded to remove metadata, with tenant-scoped upload and viewing rules. The Compose deployment persists images in `linkpay_media`; storage allowances are 25 MB Free, 150 MB Starter, and 500 MB Business.
@@ -38,22 +38,21 @@ Paynow starts new integrations in test mode. Complete Paynow's fake success and 
 
 Set `DOMAIN` to the hostname with DNS pointing at the server and `PUBLIC_URL=https://<domain>`. Open ports 80 and 443, then run `docker compose --profile production up --build -d`. Caddy obtains and renews HTTPS certificates, proxies `/api/*` to the API and other requests to Next.js, and persists certificate data in Docker volumes. The Next.js direct port is bound to localhost; the API is internal only. Keep `.env` private, and use distinct strong secrets for PostgreSQL, public links, admin TOTP, and Paynow.
 
-PostgreSQL and media use named volumes. Establish **off-host backups and tested restores of both volumes** before storing customer data. Running Compose on a platform that deploys only a single Dockerfile will not start PostgreSQL and the worker; use a Compose-capable host or deploy the database, migration job, API, worker, and web service separately there.
+PostgreSQL and media use named volumes. Establish **off-host backups and tested restores of both volumes** before storing customer data. Docker Compose uses separate containers for PostgreSQL, the migration, API, worker, web, and Caddy services.
 
 ## Railway deployment
 
-Railway does not run this repository's Compose stack as one service. The repository-root `Dockerfile` builds the **API** image, so the service created from the GitHub repository at `/` will run the API. Deploy the other processes as separate services in the same Railway project and environment:
+The repository-root `Dockerfile` builds one image containing Next.js, the Go API, and the worker. The container runs migrations before starting all three processes. Next.js serves the public `PORT` (default `8080`) and forwards `/api/v1/*` to the API on `127.0.0.1:8081`. `/healthz` checks both the web app and the API/database.
 
-1. Add a Railway PostgreSQL service. In the API service's Variables, set `DATABASE_URL` to a reference to that service's URL (for example, `${{Postgres.DATABASE_URL}}`, replacing `Postgres` with its actual service name). Set `PORT=8080`, a stable random `PUBLIC_TOKEN_SECRET` of at least 32 characters, and `PUBLIC_URL` to the web service's public HTTPS origin. Configure the API's **Pre-deploy Command** as `/app/bin/migrate` and its healthcheck path as `/healthz`. Do not expose the API publicly; the web service uses Railway's private network.
-2. Add a **web** service from the same repository and branch with root directory `/`. Set `RAILWAY_DOCKERFILE_PATH=apps/web/Dockerfile`, `PORT=3000`, and `API_INTERNAL_URL=http://api.railway.internal:8080` in its Variables **before building**. Replace `api` if the API service has a different private hostname. Generate the public domain on this web service, then set the API's `PUBLIC_URL` to `https://<web-domain>`.
-3. Add a **worker** service from the same repository and branch with root directory `/`. The root `Dockerfile` builds its binary too; set the Start Command to `/app/bin/worker`. Give it the same `DATABASE_URL`, `PUBLIC_TOKEN_SECRET`, and `PUBLIC_URL` as the API, plus SMTP settings for reminder delivery. Do not generate a public domain for the worker.
-4. Attach a persistent Railway volume to the API at `/app/media` before allowing product image uploads. Keep one API replica while images live on this volume, and set up off-host backups of both PostgreSQL and uploaded media.
+1. Keep one Railway application service connected to this repository's `main` branch with root directory `/` and the root `Dockerfile`. Clear any custom Dockerfile path, Start Command, or Pre-deploy Command left from an earlier setup. Attach the public domain to this service and set its healthcheck path to `/healthz`.
+2. Add Railway PostgreSQL to the same project/environment. On the application service, set `DATABASE_URL` to a reference to its URL (for example, `${{Postgres.DATABASE_URL}}`, replacing `Postgres` with the actual database service name). Set `PUBLIC_TOKEN_SECRET` to a stable random value of at least 32 characters, `PUBLIC_URL` to the application's public HTTPS origin, and `PORT=8080` unless Railway assigns a different public port. The application will not start if the migration or database connection fails.
+3. Attach a persistent volume at `/app/media` before allowing product image uploads. Keep **one application replica**: media files are local to the volume, and each replica would run the worker. Back up both PostgreSQL and uploaded media off-host.
 
-The `.env` file is local and ignored by Git; Railway service variables must be set in Railway. `RAILWAY_DB_URL` in `.env` is a local Docker Compose convenience. The deployed Go binaries read `DATABASE_URL` directly. The web build uses `API_INTERNAL_URL` to compile its same-origin API rewrite, so changing that address requires rebuilding the web image. The pre-deploy migration runs before the API deployment; confirm it completes before using the web service. Set Paynow, SMTP, and admin variables on the relevant services as described below.
+The `.env` file is local and ignored by Git; set production variables in Railway. `RAILWAY_DB_URL` is a local Docker Compose convenience; the deployed Go binaries read `DATABASE_URL`. `DOMAIN` is only used by Caddy in the Compose deployment. The worker runs billing reconciliation even without SMTP; email reminders run only when `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` are all configured. Set Paynow and admin variables as described below.
 
 Run `deployments/backup.sh /path/to/backup-staging` to create a PostgreSQL custom-format dump and a media archive with owner-only permissions. Copy both files to encrypted off-host storage and rehearse restoration on a separate stack. The script checks both archives before naming them as completed backups; it does not schedule or transfer them.
 
-The API and worker need `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` for password recovery and reminder delivery. They require TLS with verified certificates. Starter allows up to 100 reminder emails per month and Business up to 500. When SMTP is absent, leave the worker stopped and automated reminders disabled; password recovery will report temporary unavailability.
+The API and worker need `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` for password recovery and reminder delivery. They require TLS with verified certificates. Starter allows up to 100 reminder emails per month and Business up to 500. When SMTP is absent, automated reminders are disabled while billing reconciliation continues; password recovery will report temporary unavailability.
 
 ## Operations and security
 
