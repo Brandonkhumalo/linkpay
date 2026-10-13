@@ -30,7 +30,7 @@ export default async function StorePage({ params }) {
     <>
       <header className="public-header">
         <Brand />
-        <Link href="/">Powered by LinkPay ↗</Link>
+        <Link href="/shops">Explore shops ↗</Link>
       </header>
       <main className="public-store">
         <section
@@ -50,7 +50,7 @@ export default async function StorePage({ params }) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Chat on WhatsApp <Icon name="external" size={14} />
+                <Icon name="chat" size={16} /> Chat on WhatsApp
               </a>
             )}
             {socials.map(([label, url]) => (

@@ -47,15 +47,17 @@ export default function Storefront() {
       <PageHeader
         eyebrow="YOUR DIGITAL FRONT DOOR"
         title="Your storefront"
-        description="Make a great first impression from the first tap."
+        description="Your shop is optional. Publish it when you're ready for customers to find you."
         action={
-          <Link
-            className="button button-light"
-            href={`/store/${business.slug}`}
-            target="_blank"
-          >
-            Preview storefront <Icon name="external" size={16} />
-          </Link>
+          business.published ? (
+            <Link
+              className="button button-light"
+              href={`/store/${business.slug}`}
+              target="_blank"
+            >
+              Preview storefront <Icon name="external" size={16} />
+            </Link>
+          ) : null
         }
       />
       <Notice
@@ -107,8 +109,14 @@ export default function Storefront() {
                 <input
                   name="whatsapp"
                   placeholder="+263..."
+                  inputMode="tel"
+                  pattern="\+?[1-9][0-9]{6,14}"
                   defaultValue={business.whatsapp}
                 />
+                <span className="helper">
+                  Required to publish. Include your country code, for example
+                  +263771234567. Customers will open a chat with this number.
+                </span>
               </label>
               <label className="field">
                 Currency code
@@ -188,6 +196,10 @@ export default function Storefront() {
               />{" "}
               Publish storefront
             </label>
+            <p className="helper">
+              Published shops appear in the public directory. Keep this off if
+              you only use invoices.
+            </p>
             <button className="button button-dark" disabled={busy}>
               {busy ? "Saving…" : "Save storefront"}
             </button>
@@ -197,21 +209,29 @@ export default function Storefront() {
           <section className="panel">
             <span className="eyebrow">YOUR SHAREABLE LINK</span>
             <h2>Put your business out there.</h2>
-            <p>Share this on WhatsApp, social media, or your business card.</p>
+            <p>
+              {business.published
+                ? "Share this on WhatsApp, social media, or your business card."
+                : "Publish your shop to make this link available to customers."}
+            </p>
             <div className="preview-card">
               <span className="preview-link">{link}</span>
             </div>
             <div className="form-actions" style={{ marginTop: 16 }}>
-              <button className="button button-primary" onClick={copy}>
-                Copy link
-              </button>
-              <Link
-                className="button button-light"
-                href={`/store/${business.slug}`}
-                target="_blank"
-              >
-                Open ↗
-              </Link>
+              {business.published && (
+                <button className="button button-primary" onClick={copy}>
+                  Copy link
+                </button>
+              )}
+              {business.published && (
+                <Link
+                  className="button button-light"
+                  href={`/store/${business.slug}`}
+                  target="_blank"
+                >
+                  Open ↗
+                </Link>
+              )}
             </div>
           </section>
           <section className="panel" style={{ background: "#eff5e8" }}>

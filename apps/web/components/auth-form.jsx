@@ -19,7 +19,7 @@ export default function AuthForm({ mode, token }) {
   };
   const subtitles = {
     login: "Log in to see what is happening with your business.",
-    register: "Your storefront, customers, and invoices start here.",
+    register: "Create invoices now. Publish a shop whenever you're ready.",
     forgot: "Enter your email and we will send a 30-minute reset link.",
     reset: "Use a password of at least 12 characters.",
   };
@@ -141,7 +141,7 @@ export default function AuthForm({ mode, token }) {
                     />
                   </label>
                   <label className="field">
-                    Storefront link
+                    Reserve your storefront link
                     <input
                       name="slug"
                       required
@@ -151,7 +151,8 @@ export default function AuthForm({ mode, token }) {
                       placeholder="your-business"
                     />
                     <span className="helper">
-                      Lowercase letters, numbers and hyphens only.
+                      Lowercase letters, numbers and hyphens only. Your shop
+                      stays private until you publish it.
                     </span>
                   </label>
                 </>

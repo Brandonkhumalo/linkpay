@@ -118,15 +118,26 @@ export default function WorkspaceLayout({ children }) {
                 {label}
               </Link>
             ))}
+            <Link href="/shops" onClick={() => setMenu(false)}>
+              <Icon name="shop" size={19} />
+              Explore shops
+            </Link>
           </nav>
           <div className="sidebar-bottom">
             <div className="sidebar-tip">
               <span className="tip-graphic">✦</span>
               <strong>Your link is your storefront</strong>
               <p>Share it wherever your customers are.</p>
-              <Link href={`/store/${workspace.business.slug}`} target="_blank">
-                View storefront <Icon name="external" size={15} />
-              </Link>
+              {workspace.business.published ? (
+                <Link
+                  href={`/store/${workspace.business.slug}`}
+                  target="_blank"
+                >
+                  View storefront <Icon name="external" size={15} />
+                </Link>
+              ) : (
+                <Link href="/app/storefront">Set up your shop →</Link>
+              )}
             </div>
             <button className="logout-button" onClick={logout}>
               Log out <span>↗</span>

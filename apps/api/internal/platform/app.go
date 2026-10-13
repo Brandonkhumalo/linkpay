@@ -247,6 +247,7 @@ func (a *App) Routes(webDir string) http.Handler {
 		r.With(a.auth).Post("/auth/logout", a.logout)
 		r.With(a.auth).Get("/me", a.me)
 		r.With(a.auth).Get("/admin/overview", a.adminOverview)
+		r.Get("/public/stores", a.publicStores)
 		r.Get("/public/stores/{slug}", a.rateLimit("store:", 120, time.Minute, a.publicStore))
 		r.Get("/public/products/{id}/image", a.publicProductImage)
 		r.Post("/public/stores/{slug}/enquiries", a.rateLimit("enquiry:", 10, time.Hour, a.publicEnquiry))

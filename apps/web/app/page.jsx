@@ -7,6 +7,7 @@ export default function Home() {
       <header className="site-nav">
         <Brand />
         <nav>
+          <Link href="/shops">Explore shops</Link>
           <a href="#features">Why LinkPay</a>
           <a href="#how-it-works">How it works</a>
           <a href="#pricing">Pricing</a>
@@ -313,6 +314,7 @@ export default function Home() {
         <Brand />
         <span>Made for the businesses that keep moving.</span>
         <div>
+          <Link href="/shops">Explore shops</Link>
           <Link href="/login">Log in</Link>
           <Link href="/register">Get started</Link>
         </div>

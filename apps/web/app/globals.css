@@ -1631,6 +1631,42 @@ img {
   grid-template-columns: repeat(3, 1fr);
   gap: 17px;
 }
+.directory-banner {
+  background: linear-gradient(120deg, #e8f0dd, #f8f4e9);
+}
+.directory-banner .text-link {
+  align-self: flex-start;
+  margin-top: 10px;
+}
+.directory-card {
+  display: flex;
+  flex-direction: column;
+}
+.directory-card-art {
+  height: 120px;
+  display: grid;
+  place-items: center;
+}
+.directory-card-art span {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 20px;
+  background: #fff;
+  color: var(--forest);
+  font:
+    800 36px Manrope,
+    sans-serif;
+}
+.directory-card .store-item-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+.directory-card .store-item-actions {
+  margin-top: auto;
+}
 .store-item {
   border-radius: 15px;
   overflow: hidden;

@@ -114,6 +114,10 @@ func (a *App) updateBusiness(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "WhatsApp number must use international digits")
 		return
 	}
+	if in.Published && in.Whatsapp == "" {
+		fail(w, 400, "Add a WhatsApp number before publishing your storefront")
+		return
+	}
 	if !validSocialURL(in.InstagramURL, "instagram.com") || !validSocialURL(in.FacebookURL, "facebook.com") || !validSocialURL(in.TikTokURL, "tiktok.com") || !validSocialURL(in.WebsiteURL, "") {
 		fail(w, 400, "Social links must be valid HTTPS URLs")
 		return
@@ -322,6 +326,42 @@ func (a *App) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(204)
 }
+
+type publicStoreSummary struct {
+	Name        string `json:"name"`
+	Slug        string `json:"slug"`
+	Description string `json:"description"`
+	Whatsapp    string `json:"whatsapp"`
+	ThemeColor  string `json:"theme_color"`
+}
+
+func (a *App) publicStores(w http.ResponseWriter, r *http.Request) {
+	page, ok := requestPage(w, r)
+	if !ok {
+		return
+	}
+	rows, err := a.DB.Query(r.Context(), `SELECT name,slug,description,whatsapp,theme_color FROM businesses WHERE published=true ORDER BY name,id LIMIT $1 OFFSET $2`, listPageSize+1, (page-1)*listPageSize)
+	if err != nil {
+		unavailable(w, r, err)
+		return
+	}
+	defer rows.Close()
+	shops := []publicStoreSummary{}
+	for rows.Next() {
+		var shop publicStoreSummary
+		if err = rows.Scan(&shop.Name, &shop.Slug, &shop.Description, &shop.Whatsapp, &shop.ThemeColor); err != nil {
+			unavailable(w, r, err)
+			return
+		}
+		shops = append(shops, shop)
+	}
+	if err = rows.Err(); err != nil {
+		unavailable(w, r, err)
+		return
+	}
+	writeJSON(w, 200, paged(shops, page))
+}
+
 func (a *App) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	var b businessView

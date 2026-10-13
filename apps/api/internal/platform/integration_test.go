@@ -114,6 +114,39 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	}
 	aCookie := register("tenant-a@example.test", "tenant-a")
 	bCookie := register("tenant-b@example.test", "tenant-b")
+	status, directory, _ := request("GET", "/api/v1/public/stores", nil, nil)
+	if status != 200 || len(directory["items"].([]any)) != 0 {
+		t.Fatalf("draft storefront visible in directory: %d %v", status, directory)
+	}
+	storeUpdate := map[string]any{"name": "Tenant A", "description": "A shop", "whatsapp": "", "email": "tenant-a@example.test", "currency": "USD", "timezone": "UTC", "theme_color": "#4f46e5", "published": true}
+	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
+	if status != 400 {
+		t.Fatalf("storefront published without WhatsApp: %d", status)
+	}
+	storeUpdate["whatsapp"] = "+263771234567"
+	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
+	if status != 200 {
+		t.Fatalf("publish storefront: %d", status)
+	}
+	status, directory, _ = request("GET", "/api/v1/public/stores", nil, nil)
+	shops := directory["items"].([]any)
+	if status != 200 || len(shops) != 1 || shops[0].(map[string]any)["slug"] != "tenant-a" || shops[0].(map[string]any)["whatsapp"] != "+263771234567" {
+		t.Fatalf("public directory: %d %v", status, directory)
+	}
+	for i := 0; i < listPageSize; i++ {
+		name := "Directory Shop " + strconv.Itoa(i)
+		if _, err = a.DB.Exec(ctx, `INSERT INTO businesses(id,name,slug,published) VALUES($1,$2,$3,true)`, newID(), name, "directory-shop-"+strconv.Itoa(i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	status, directory, _ = request("GET", "/api/v1/public/stores?page=1", nil, nil)
+	if status != 200 || len(directory["items"].([]any)) != listPageSize || directory["has_next"] != true || directory["has_prev"] != false {
+		t.Fatalf("first directory page: %d %v", status, directory)
+	}
+	status, directory, _ = request("GET", "/api/v1/public/stores?page=2", nil, nil)
+	if status != 200 || len(directory["items"].([]any)) != 1 || directory["has_next"] != false || directory["has_prev"] != true {
+		t.Fatalf("second directory page: %d %v", status, directory)
+	}
 	status, customer, _ := request("POST", "/api/v1/customers", map[string]any{"name": "Customer A", "email": "customer-a@example.test", "phone": "", "notes": ""}, aCookie)
 	if status != 201 {
 		t.Fatalf("create customer: %d", status)
