@@ -183,7 +183,11 @@ export function Products({ page }) {
                     </td>
                     <td>{p.kind}</td>
                     <td>
-                      <strong>{p.price_on_request ? "Request a quote" : money(p.price_minor, business.currency)}</strong>
+                      <strong>
+                        {p.price_on_request
+                          ? "Request a quote"
+                          : money(p.price_minor, business.currency)}
+                      </strong>
                     </td>
                     <td>
                       <Badge>{p.active ? "active" : "hidden"}</Badge>
@@ -209,12 +213,29 @@ export function Products({ page }) {
             description="Products and services you add will appear on your storefront."
             action={
               page === 1 ? (
-                <button
-                  className="button button-primary"
-                  onClick={() => openEditor({})}
-                >
-                  Add listing
-                </button>
+                <div className="form-actions">
+                  <button
+                    className="button button-primary"
+                    onClick={() => openEditor({})}
+                  >
+                    Add listing
+                  </button>
+                  <button
+                    className="button button-light"
+                    onClick={() =>
+                      openEditor({
+                        name: "Example service",
+                        description:
+                          "Describe the result your customer receives",
+                        kind: "service",
+                        price_minor: 0,
+                        active: false,
+                      })
+                    }
+                  >
+                    Start from example
+                  </button>
+                </div>
               ) : null
             }
           />
@@ -248,7 +269,14 @@ export function Products({ page }) {
             <div className="form-grid">
               <label className="field">
                 Type
-                <select name="kind" value={kind} onChange={(event) => { setKind(event.target.value); if (event.target.value !== "service") setQuote(false); }}>
+                <select
+                  name="kind"
+                  value={kind}
+                  onChange={(event) => {
+                    setKind(event.target.value);
+                    if (event.target.value !== "service") setQuote(false);
+                  }}
+                >
                   <option value="product">Product</option>
                   <option value="service">Service</option>
                 </select>
@@ -273,7 +301,11 @@ export function Products({ page }) {
             </div>
             {kind === "service" && (
               <label className="field checkbox-field">
-                <input type="checkbox" checked={quote} onChange={(event) => setQuote(event.target.checked)} />{" "}
+                <input
+                  type="checkbox"
+                  checked={quote}
+                  onChange={(event) => setQuote(event.target.checked)}
+                />{" "}
                 Price on request for custom work
               </label>
             )}
@@ -433,8 +465,48 @@ export function Customers({ page }) {
 
 export function Enquiries({ page }) {
   const { business } = useWorkspace();
-  const result = useResource(`/enquiries?page=${page}`);
+  const [key, refresh] = useState(0);
+  const result = useResource(`/enquiries?page=${page}`, key);
   const [notice, setNotice] = useState("");
+  const [quoting, setQuoting] = useState(null);
+  const [quoteLink, setQuoteLink] = useState("");
+  const [quoteBusy, setQuoteBusy] = useState(false);
+  async function updateStage(id, stage) {
+    try {
+      await api(`/enquiries/${id}/stage`, {
+        method: "PATCH",
+        body: JSON.stringify({ stage }),
+      });
+      refresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    }
+  }
+  async function createQuote(event) {
+    event.preventDefault();
+    if (quoteBusy) return;
+    setQuoteBusy(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      const result = await api("/quotes", {
+        method: "POST",
+        body: JSON.stringify({
+          enquiry_id: quoting.id,
+          description: String(form.get("description")).trim(),
+          amount_minor: Math.round(Number(form.get("amount")) * 100),
+          expires_at: form.get("expires_at"),
+        }),
+      });
+      setQuoting(null);
+      setQuoteLink(result.url);
+      setNotice("Quote created. Share its private link with the customer.");
+      refresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setQuoteBusy(false);
+    }
+  }
   async function addCustomer(e) {
     try {
       await api("/customers", {
@@ -457,11 +529,51 @@ export function Enquiries({ page }) {
         eyebrow="NEW CONVERSATIONS"
         title="Enquiries"
         description="Follow up with people interested in what you offer."
+        action={
+          <Link className="button button-light" href="/app/quotes">
+            View quotes →
+          </Link>
+        }
       />
       <Notice
         message={notice}
-        kind={notice.startsWith("Customer added") ? "success" : "error"}
+        kind={
+          notice.startsWith("Customer added") ||
+          notice.startsWith("Quote created") ||
+          notice.startsWith("Quote link copied")
+            ? "success"
+            : "error"
+        }
       />
+      {quoteLink && (
+        <section className="panel" style={{ marginBottom: 16 }}>
+          <strong>Quote ready to share</strong>
+          <p className="helper">{quoteLink}</p>
+          <div className="form-actions">
+            <button
+              className="button button-light"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(quoteLink);
+                  setNotice("Quote link copied.");
+                } catch {
+                  setNotice("Copy the quote link shown above.");
+                }
+              }}
+            >
+              Copy quote link
+            </button>
+            <a
+              className="button button-light"
+              href={quoteLink}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Preview quote ↗
+            </a>
+          </div>
+        </section>
+      )}
       <section className="panel">
         {result.loading ? (
           <Loading />
@@ -486,17 +598,60 @@ export function Enquiries({ page }) {
                       <small className="subline">{e.email || e.phone}</small>
                     </td>
                     <td style={{ maxWidth: 360 }}>
-                      {e.brand_name && <strong>{e.brand_name}<br /></strong>}
-                      {e.product_name && <small className="subline">Package: {e.product_name}</small>}
+                      {e.brand_name && (
+                        <strong>
+                          {e.brand_name}
+                          <br />
+                        </strong>
+                      )}
+                      {e.product_name && (
+                        <small className="subline">
+                          Package: {e.product_name}
+                        </small>
+                      )}
                       {e.message}
-                      {e.deliverables && <p><strong>Deliverables:</strong> {e.deliverables}</p>}
-                      {e.budget_minor != null && <p><strong>Budget:</strong> {money(e.budget_minor, business.currency)}</p>}
-                      {e.campaign_deadline && <p><strong>Target date:</strong> {date(e.campaign_deadline)}</p>}
-                      {e.usage_rights && <p><strong>Usage rights:</strong> {e.usage_rights}</p>}
+                      {e.deliverables && (
+                        <p>
+                          <strong>Deliverables:</strong> {e.deliverables}
+                        </p>
+                      )}
+                      {e.budget_minor != null && (
+                        <p>
+                          <strong>Budget:</strong>{" "}
+                          {money(e.budget_minor, business.currency)}
+                        </p>
+                      )}
+                      {e.campaign_deadline && (
+                        <p>
+                          <strong>Target date:</strong>{" "}
+                          {date(e.campaign_deadline)}
+                        </p>
+                      )}
+                      {e.usage_rights && (
+                        <p>
+                          <strong>Usage rights:</strong> {e.usage_rights}
+                        </p>
+                      )}
                     </td>
                     <td>{date(e.created_at)}</td>
                     <td>
                       <div className="list-actions">
+                        <select
+                          aria-label={`Stage for ${e.name}`}
+                          value={e.stage}
+                          onChange={(event) =>
+                            updateStage(e.id, event.target.value)
+                          }
+                        >
+                          <option value="new">New</option>
+                          <option value="contacted">Contacted</option>
+                          <option value="quoted">Quoted</option>
+                          <option value="won">Won</option>
+                          <option value="lost">Lost</option>
+                        </select>
+                        <button onClick={() => setQuoting(e)}>
+                          Create quote
+                        </button>
                         <button onClick={() => addCustomer(e)}>
                           Add customer
                         </button>
@@ -521,6 +676,56 @@ export function Enquiries({ page }) {
         )}
         <Pagination base="/app/enquiries" data={result.data} />
       </section>
+      {quoting && (
+        <Modal
+          title={`Quote for ${quoting.name}`}
+          onClose={() => setQuoting(null)}
+        >
+          <form onSubmit={createQuote}>
+            <label className="field">
+              Scope and deliverables
+              <textarea
+                name="description"
+                minLength={2}
+                maxLength={2000}
+                required
+                defaultValue={
+                  quoting.deliverables || quoting.product_name || ""
+                }
+              />
+            </label>
+            <div className="form-grid">
+              <label className="field">
+                Price ({business.currency})
+                <input
+                  name="amount"
+                  type="number"
+                  min="0.01"
+                  max="10000000"
+                  step="0.01"
+                  required
+                  defaultValue={
+                    quoting.product_name && !quoting.product_price_on_request
+                      ? (quoting.product_price_minor / 100).toFixed(2)
+                      : ""
+                  }
+                />
+              </label>
+              <label className="field">
+                Valid until
+                <input name="expires_at" type="date" required />
+              </label>
+            </div>
+            <p className="helper">
+              Creating a quote gives you a private link to share. The customer
+              can accept or decline it.
+            </p>
+            <button className="button button-dark" disabled={quoteBusy}>
+              {quoteBusy ? "Creating…" : "Create quote"}
+            </button>
+          </form>
+        </Modal>
+      )}
     </>
   );
 }

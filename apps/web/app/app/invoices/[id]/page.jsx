@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, date, errorMessage, money } from "../../../../lib/api";
 import {
@@ -12,15 +12,106 @@ import {
   useResource,
 } from "../../../../components/ui";
 
+function WhatsappInvoiceActions({ id, invoice }) {
+  const link = useResource(`/invoices/${encodeURIComponent(id)}/share-link`);
+  if (link.loading || link.error || !link.data?.url) return null;
+  const number = invoice.customer_phone.replace(/\D/g, "");
+  if (!number) return null;
+  const numberLabel = String(invoice.number).padStart(6, "0");
+  const share = `Hello ${invoice.customer_name}, here is invoice #${numberLabel} for ${money(invoice.total_minor, invoice.currency)}. View it here: ${link.data.url}`;
+  const reminder = `Hello ${invoice.customer_name}, invoice #${numberLabel} has ${money(invoice.balance_minor, invoice.currency)} outstanding. ${link.data.url}`;
+  return (
+    <>
+      <a
+        className="button button-light"
+        href={`https://wa.me/${number}?text=${encodeURIComponent(share)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Share on WhatsApp ↗
+      </a>
+      {invoice.balance_minor > 0 && (
+        <a
+          className="button button-light"
+          href={`https://wa.me/${number}?text=${encodeURIComponent(reminder)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          WhatsApp reminder ↗
+        </a>
+      )}
+    </>
+  );
+}
+
 export default function InvoiceDetail() {
+  const router = useRouter();
   const { id } = useParams();
   const [key, refresh] = useState(0),
     [notice, setNotice] = useState(""),
     [payment, setPayment] = useState(false),
+    [selectedClaim, setSelectedClaim] = useState(null),
+    [claimPage, setClaimPage] = useState(1),
     [busy, setBusy] = useState(false),
     [paymentKey, setPaymentKey] = useState(null);
   const result = useResource(`/invoices/${encodeURIComponent(id)}`, key),
     i = result.data;
+  const claims = useResource(
+    `/invoices/${encodeURIComponent(id)}/payment-claims?page=${claimPage}`,
+    key,
+  );
+  const scheduleResource = useResource(
+    `/invoices/${encodeURIComponent(id)}/schedule`,
+    key,
+  );
+  const schedule = scheduleResource.data;
+  async function duplicate(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      const created = await api(`/invoices/${id}/duplicate`, {
+        method: "POST",
+        body: JSON.stringify({ due_at: form.get("due_at") }),
+      });
+      router.push(`/app/invoices/${created.id}`);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveSchedule(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const form = new FormData(event.currentTarget);
+      await api(`/invoices/${id}/schedule`, {
+        method: "POST",
+        body: JSON.stringify({
+          interval_months: Number(form.get("interval_months")),
+          next_run_on: form.get("next_run_on"),
+          active: form.has("active"),
+        }),
+      });
+      setNotice("Recurring draft schedule saved.");
+      refresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function dismissClaim(claimID) {
+    try {
+      await api(`/invoices/${id}/payment-claims/${claimID}/dismiss`, {
+        method: "POST",
+      });
+      refresh((value) => value + 1);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    }
+  }
   async function act(type) {
     setNotice("");
     setBusy(true);
@@ -41,16 +132,6 @@ export default function InvoiceDetail() {
       } else if (type === "void") {
         await api(`/invoices/${id}/void`, { method: "POST" });
         setNotice("Invoice voided.");
-      } else if (type === "whatsapp") {
-        const r = await api(`/invoices/${id}/share-link`);
-        const number = i.customer_phone.replace(/\D/g, "");
-        if (!number) throw new Error("Customer has no phone number");
-        const message = `Hello ${i.customer_name}, invoice #${String(i.number).padStart(6, "0")} has ${money(i.balance_minor, i.currency)} outstanding. ${r.url}`;
-        window.open(
-          `https://wa.me/${number}?text=${encodeURIComponent(message)}`,
-          "_blank",
-          "noopener,noreferrer",
-        );
       }
       refresh((v) => v + 1);
     } catch (e) {
@@ -74,9 +155,11 @@ export default function InvoiceDetail() {
           method: data.get("method"),
           reference: data.get("reference"),
           idempotency_key: key,
+          claim_id: selectedClaim?.id || "",
         }),
       });
       setPayment(false);
+      setSelectedClaim(null);
       setPaymentKey(null);
       setNotice("Payment recorded.");
       refresh((v) => v + 1);
@@ -222,15 +305,8 @@ export default function InvoiceDetail() {
                 )}
                 {i.status !== "void" &&
                   i.status !== "draft" &&
-                  i.balance_minor > 0 &&
                   i.customer_phone && (
-                    <button
-                      className="button button-light"
-                      disabled={busy}
-                      onClick={() => act("whatsapp")}
-                    >
-                      WhatsApp reminder
-                    </button>
+                    <WhatsappInvoiceActions id={id} invoice={i} />
                   )}
                 {i.status !== "void" &&
                   i.status !== "draft" &&
@@ -239,6 +315,7 @@ export default function InvoiceDetail() {
                       className="button button-light"
                       onClick={() => {
                         setPayment(true);
+                        setSelectedClaim(null);
                         setPaymentKey(crypto.randomUUID());
                       }}
                     >
@@ -256,11 +333,127 @@ export default function InvoiceDetail() {
                 )}
               </div>
             </section>
+            <section className="panel">
+              <h2>Use this invoice again</h2>
+              <form onSubmit={duplicate}>
+                <label className="field">
+                  New due date
+                  <input name="due_at" type="date" required />
+                </label>
+                <button className="button button-light" disabled={busy}>
+                  Create duplicate draft
+                </button>
+              </form>
+            </section>
+            {i.status !== "void" && (
+              <section className="panel">
+                <h2>Recurring drafts</h2>
+                <p>
+                  LinkPay creates a draft for your review on each scheduled
+                  date. It never sends it automatically.
+                </p>
+                <form key={schedule?.id || "new"} onSubmit={saveSchedule}>
+                  <label className="field">
+                    Every
+                    <select
+                      name="interval_months"
+                      defaultValue={schedule?.interval_months || 1}
+                    >
+                      <option value="1">Month</option>
+                      <option value="3">3 months</option>
+                      <option value="6">6 months</option>
+                      <option value="12">Year</option>
+                    </select>
+                  </label>
+                  <label className="field">
+                    Next draft date
+                    <input
+                      name="next_run_on"
+                      type="date"
+                      required
+                      defaultValue={schedule?.next_run_on || ""}
+                    />
+                  </label>
+                  <label className="field checkbox-field">
+                    <input
+                      name="active"
+                      type="checkbox"
+                      defaultChecked={schedule?.active !== false}
+                    />{" "}
+                    Active
+                  </label>
+                  {schedule?.last_error && (
+                    <p className="helper">
+                      Needs attention: {schedule.last_error}
+                    </p>
+                  )}
+                  <button className="button button-light" disabled={busy}>
+                    Save schedule
+                  </button>
+                </form>
+              </section>
+            )}
+            <section className="panel">
+              <h2>Customer payment reports</h2>
+              <p>
+                Reports from the invoice link are unverified. Check your account
+                before recording a payment.
+              </p>
+              {claims.loading ? (
+                <Loading />
+              ) : claims.error ? (
+                <Notice message={claims.error} />
+              ) : claims.data.items.length ? (
+                claims.data.items.map((claim) => (
+                  <div className="preview-card" key={claim.id}>
+                    <strong>
+                      {money(claim.amount_minor, i.currency)} · {claim.status}
+                    </strong>
+                    <p>{claim.reference || "No reference supplied"}</p>
+                    {claim.status === "pending" && (
+                      <div className="form-actions">
+                        <button
+                          onClick={() => {
+                            setSelectedClaim(claim);
+                            setPayment(true);
+                            setPaymentKey(crypto.randomUUID());
+                          }}
+                        >
+                          Record verified payment
+                        </button>
+                        <button onClick={() => dismissClaim(claim.id)}>
+                          Dismiss report
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))
+              ) : (
+                <p>No payment reports.</p>
+              )}
+              {claims.data && (
+                <div className="pagination">
+                  <button
+                    disabled={!claims.data.has_prev}
+                    onClick={() => setClaimPage(claimPage - 1)}
+                  >
+                    ← Previous
+                  </button>
+                  <span>Page {claimPage}</span>
+                  <button
+                    disabled={!claims.data.has_next}
+                    onClick={() => setClaimPage(claimPage + 1)}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </section>
             {payment && (
               <section className="panel">
                 <h2>Record payment</h2>
                 <p>Confirm funds outside LinkPay before recording them here.</p>
-                <form onSubmit={record}>
+                <form key={selectedClaim?.id || "manual"} onSubmit={record}>
                   <label className="field">
                     Amount ({i.currency})
                     <input
@@ -270,6 +463,11 @@ export default function InvoiceDetail() {
                       max={(i.balance_minor / 100).toFixed(2)}
                       step="0.01"
                       required
+                      defaultValue={
+                        selectedClaim
+                          ? (selectedClaim.amount_minor / 100).toFixed(2)
+                          : ""
+                      }
                     />
                   </label>
                   <label className="field">
@@ -282,7 +480,11 @@ export default function InvoiceDetail() {
                   </label>
                   <label className="field">
                     Reference
-                    <input name="reference" placeholder="Optional reference" />
+                    <input
+                      name="reference"
+                      placeholder="Optional reference"
+                      defaultValue={selectedClaim?.reference || ""}
+                    />
                   </label>
                   <div className="form-actions">
                     <button className="button button-dark" disabled={busy}>
@@ -291,7 +493,10 @@ export default function InvoiceDetail() {
                     <button
                       type="button"
                       className="button button-light"
-                      onClick={() => setPayment(false)}
+                      onClick={() => {
+                        setPayment(false);
+                        setSelectedClaim(null);
+                      }}
                     >
                       Cancel
                     </button>

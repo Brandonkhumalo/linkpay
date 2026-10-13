@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import { api, errorMessage, notificationDestination } from "../../lib/api";
 import { money } from "../../lib/api";
 import {
   Badge,
@@ -15,9 +17,21 @@ import { useWorkspace } from "./layout";
 
 export default function Overview() {
   const { business, me } = useWorkspace();
+  const [notificationKey, refreshNotifications] = useState(0);
+  const [notice, setNotice] = useState("");
   const overview = useResource("/analytics/overview");
   const subscription = useResource("/subscription");
   const invoices = useResource("/invoices?page=1");
+  const notifications = useResource("/notifications", notificationKey);
+  const followups = useResource("/followups");
+  async function readNotification(id) {
+    try {
+      await api(`/notifications/${id}/read`, { method: "POST" });
+      refreshNotifications((value) => value + 1);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    }
+  }
   const firstName = me.email.split("@")[0].split(/[._-]/)[0];
   const stats = overview.data && [
     ["Total invoiced", overview.data.invoiced_minor, "file"],
@@ -37,6 +51,28 @@ export default function Overview() {
           </Link>
         }
       />
+      <Notice message={notice} />
+      <section className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-head">
+          <div>
+            <span className="eyebrow">GET STARTED</span>
+            <h2>Make your link useful</h2>
+          </div>
+        </div>
+        <div className="quick-actions">
+          <Link href="/app/storefront">
+            {business.published ? "✓" : "1"} Publish your storefront{" "}
+            <span>↗</span>
+          </Link>
+          <Link href="/app/products">
+            {subscription.data?.products_used ? "✓" : "2"} Add a product or
+            service <span>↗</span>
+          </Link>
+          <Link href="/app/storefront">
+            3 Share your link and QR code <span>↗</span>
+          </Link>
+        </div>
+      </section>
       {overview.loading ? (
         <Loading />
       ) : overview.error ? (
@@ -59,6 +95,45 @@ export default function Overview() {
       )}
       <div className="content-grid">
         <div className="stack">
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Activity</h2>
+              <Link href="/app/activity">View all →</Link>
+            </div>
+            {notifications.loading ? (
+              <Loading />
+            ) : notifications.error ? (
+              <Notice message={notifications.error} />
+            ) : notifications.data.items.length ? (
+              <div className="stack" style={{ gap: 10 }}>
+                {notifications.data.items.slice(0, 5).map((item) => (
+                  <div className="preview-card" key={item.id}>
+                    <strong>
+                      {item.read ? "" : "● "}
+                      {item.title}
+                    </strong>
+                    <div className="form-actions">
+                      <Link href={notificationDestination(item.kind)}>
+                        Review →
+                      </Link>
+                      {!item.read && (
+                        <button onClick={() => readNotification(item.id)}>
+                          Mark read
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p>No new activity yet.</p>
+            )}
+            {followups.data && (
+              <p className="helper">
+                <Link href="/app/followups">View customer follow-ups →</Link>
+              </p>
+            )}
+          </section>
           <section className="panel">
             <div className="panel-head">
               <div>

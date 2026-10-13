@@ -18,6 +18,7 @@ function NewInvoiceContent() {
     { business } = useWorkspace();
   const sourceId = params.get("enquiry");
   const [customerPage, setCustomerPage] = useState(1),
+    [productPage, setProductPage] = useState(1),
     [selected, setSelected] = useState(null),
     [creatingCustomer, setCreatingCustomer] = useState(false),
     [items, setItems] = useState([
@@ -29,6 +30,7 @@ function NewInvoiceContent() {
   const [sourceLoading, setSourceLoading] = useState(Boolean(sourceId));
   const [sourceError, setSourceError] = useState("");
   const customers = useResource(`/customers?page=${customerPage}`);
+  const products = useResource(`/products?page=${productPage}`);
   useEffect(() => {
     if (!sourceId) return;
     let active = true;
@@ -189,10 +191,7 @@ function NewInvoiceContent() {
                   </label>
                   <label className="field">
                     Phone
-                    <input
-                      name="phone"
-                      defaultValue={source?.phone || ""}
-                    />
+                    <input name="phone" defaultValue={source?.phone || ""} />
                   </label>
                 </div>
                 <input
@@ -273,6 +272,57 @@ function NewInvoiceContent() {
                 <input name="due_at" type="date" required />
               </label>
               <h3 style={{ fontSize: 14, marginTop: 25 }}>Line items</h3>
+              <label className="field">
+                Add a saved service or product
+                <select
+                  value=""
+                  onChange={(event) => {
+                    const product = products.data?.items.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    if (!product || product.price_on_request) return;
+                    setItems((current) => [
+                      ...current.filter(
+                        (item) => item.description || item.unit_price,
+                      ),
+                      {
+                        description: product.name,
+                        quantity: 1,
+                        unit_price: (product.price_minor / 100).toFixed(2),
+                      },
+                    ]);
+                  }}
+                >
+                  <option value="">Choose a priced listing</option>
+                  {products.data?.items
+                    .filter((item) => item.active && !item.price_on_request)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ·{" "}
+                        {money(item.price_minor, business.currency)}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {products.data && (
+                <div className="pagination">
+                  <button
+                    type="button"
+                    disabled={!products.data.has_prev}
+                    onClick={() => setProductPage(productPage - 1)}
+                  >
+                    ← Previous
+                  </button>
+                  <span>Listing page {productPage}</span>
+                  <button
+                    type="button"
+                    disabled={!products.data.has_next}
+                    onClick={() => setProductPage(productPage + 1)}
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
               {items.map((item, index) => (
                 <div
                   className="form-grid"

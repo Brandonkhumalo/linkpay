@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Brand, Badge } from "../../../components/ui";
 import { date, money } from "../../../lib/api";
 import { publicApi } from "../../../lib/server-api";
+import PaymentClaim from "../../../components/payment-claim";
 
 export const metadata = {
   title: "View invoice",
@@ -77,15 +78,36 @@ export default async function InvoicePage({ params }) {
           </div>
           {i.notes && (
             <div className="preview-card">
-              <strong>Payment notes</strong>
+              <strong>Scope and notes</strong>
               <p>{i.notes}</p>
             </div>
           )}
+          <div className="preview-card" style={{ marginTop: 16 }}>
+            <strong>How to pay {b.name}</strong>
+            <p>
+              {b.payment_instructions ||
+                `Contact ${b.name} to arrange payment directly.`}
+            </p>
+            {b.whatsapp && (
+              <a
+                href={`https://wa.me/${b.whatsapp.replace(/\D/g, "")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Ask on WhatsApp ↗
+              </a>
+            )}
+          </div>
           <p className="helper" style={{ marginTop: 20 }}>
             Payment is arranged directly with {b.name}. LinkPay does not collect
             your payment on this page.
           </p>
         </section>
+        <PaymentClaim
+          token={token}
+          balanceMinor={i.balance_minor}
+          currency={i.currency}
+        />
         <p className="helper" style={{ textAlign: "center", marginTop: 25 }}>
           Powered by <Link href="/">LinkPay</Link>
         </p>

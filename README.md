@@ -17,8 +17,21 @@ LinkPay is a multi-tenant storefront and invoicing application built with a Go A
 - Optional creator profiles with niche, location, social and portfolio links, discoverable in the public directory. Creators can publish with a contact email or WhatsApp number.
 - Service packages can use a fixed price or "Request a quote". Brand partners can send structured briefs with deliverables, optional budget, target date, and usage rights; creators review them in Enquiries and can start an invoice after agreeing terms.
 - JPEG/PNG product images, re-encoded to remove metadata, with tenant-scoped upload and viewing rules. The Compose deployment persists images in `linkpay_media`; storage allowances are 25 MB Free, 150 MB Starter, and 500 MB Business.
+- Enquiry stages, an in-app activity feed, and email alerts to the account owner when a customer sends an enquiry, responds to a quote, or reports a payment. Email alerts require SMTP.
+- Private, expiring quotes created from enquiries. The customer can accept or decline via the bearer link; an accepted quote converts into a draft invoice with the agreed scope and price. The merchant shares the quote link manually.
+- Configurable payment instructions on private invoice pages and PDFs, one-click WhatsApp sharing, and customer payment reports that stay unverified until the merchant checks funds and records the matching payment.
+- An onboarding checklist, example listing draft, downloadable storefront QR code, and ready-to-share text for WhatsApp.
+- Priced product and service reuse in invoices, invoice duplication, monthly/quarterly/half-yearly/yearly recurring **drafts** for merchant review, and private customer follow-up tasks with due alerts.
 
 Public storefront and invoice pages are server-rendered by Next.js. The browser uses same-origin API requests for authenticated workspace actions. Private list responses are paginated by the API, so older records remain reachable.
+
+## Sales and repeat-work flows
+
+The Enquiries page is a private work queue. Merchants can set New, Contacted, Quoted, Won, or Lost, then create a quote. Quotes have a customer-facing link valid through the selected expiry date in the business timezone. Anyone holding that link can respond; it is an approval record, not identity verification or an electronic signature. Acceptance does not issue an invoice automatically: the merchant reviews it and converts it to a draft, then issues and shares the invoice.
+
+Invoice pages show the business's payment instructions. A customer can report an outside payment, but this only creates a pending report. The merchant must verify the funds and record the payment; recording from the report marks it verified in the same transaction. LinkPay does not handle merchant funds.
+
+Recurring invoice schedules run in the business timezone through the worker. Each due run copies the source invoice into a new draft and consumes the current month's invoice allowance or a top-up. After an outage, one draft is created for the overdue schedule and the next date moves forward; missed periods are not bulk-generated. The worker does not send drafts automatically. If quota is exhausted, the schedule remains due and shows an error for the merchant to resolve. Customer follow-ups are private tasks; the worker creates a due alert and, when SMTP is configured, emails the account owner. It does not contact the customer automatically. Merchants can also add priced listings to a new invoice and duplicate an existing invoice into a draft.
 
 ## Local startup
 
@@ -82,10 +95,10 @@ The API and worker need `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, 
 
 Paynow checkout is implemented, but this workspace has no Paynow merchant credentials or reachable callback URL, so no live or test-mode transaction has been verified here. The current admin view is read-only and does not change plans.
 
-S3-compatible object storage, quotations, customer data export/deletion, email bounce processing, support controls, and detailed traffic analytics remain unimplemented. Product images live in one Docker volume, so multiple API replicas require shared storage or an object-store migration. Reminder delivery uses SMTP and a durable job table; SMTP acknowledgement cannot provide exactly-once delivery after a process crash, so an external provider with message idempotency is advisable before high-volume use. The in-memory IP limiter is suitable for one API instance and must move to a shared service or gateway when horizontally scaled.
+S3-compatible object storage, customer data export/deletion, email bounce processing, support controls, and detailed traffic analytics remain unimplemented. Product images live in one Docker volume, so multiple API replicas require shared storage or an object-store migration. Reminder and merchant-alert delivery use SMTP; SMTP acknowledgement cannot provide exactly-once delivery after a process crash, so an external provider with message idempotency is advisable before high-volume use. The in-memory IP limiter is suitable for one API instance and must move to a shared service or gateway when horizontally scaled.
 
 No production deployment, live email delivery, or Paynow merchant flow has been validated here.
 
 ## Verification
 
-From `apps/api`, run `go test ./...` and `go vet ./...`. From `apps/web`, run `npm ci`, `npm run lint`, and `npm run build`. To run the tenant-isolation and payment integration test, set `LINKPAY_TEST_DATABASE_URL` to a PostgreSQL database where the test user can create and drop schemas, then run `go test ./internal/platform -run TestTenantIsolationAndPaymentBoundary -v`. The test creates and drops its own randomly named schema. CI runs this test against PostgreSQL 16 and runs the official Go vulnerability checker.
+From `apps/api`, run `go test ./...` and `go vet ./...`. From `apps/web`, run `npm ci`, `npm run lint`, and `npm run build`. To run the tenant-isolation, payment, and growth-workflow integration tests, set `LINKPAY_TEST_DATABASE_URL` to a PostgreSQL database where the test user can create and drop schemas, then run `go test ./internal/platform -run 'TestTenantIsolationAndPaymentBoundary|TestGrowthWorkflows' -v`. The tests create and drop their own randomly named schemas. CI runs PostgreSQL-backed tests and the official Go vulnerability checker.

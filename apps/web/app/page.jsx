@@ -222,7 +222,9 @@ export default function Home() {
               <span>04</span>
               <div>
                 <h3>Keep moving</h3>
-                <p>Record money received outside LinkPay and track what is due.</p>
+                <p>
+                  Record money received outside LinkPay and track what is due.
+                </p>
               </div>
             </li>
           </ol>

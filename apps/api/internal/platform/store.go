@@ -36,6 +36,7 @@ type businessView struct {
 	CreatorNiche         string   `json:"creator_niche"`
 	CreatorLocation      string   `json:"creator_location"`
 	CreatorPortfolioURLs []string `json:"creator_portfolio_urls"`
+	PaymentInstructions  string   `json:"payment_instructions"`
 }
 type businessUpdate struct {
 	Name                 string   `json:"name"`
@@ -54,6 +55,7 @@ type businessUpdate struct {
 	CreatorNiche         string   `json:"creator_niche"`
 	CreatorLocation      string   `json:"creator_location"`
 	CreatorPortfolioURLs []string `json:"creator_portfolio_urls"`
+	PaymentInstructions  string   `json:"payment_instructions"`
 }
 
 func validSocialURL(raw, domain string) bool {
@@ -76,7 +78,7 @@ func validSocialURL(raw, domain string) bool {
 
 func (a *App) readBusiness(r *http.Request, id string) (businessView, error) {
 	var b businessView
-	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls FROM businesses WHERE id=$1`, id).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs)
+	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls,payment_instructions FROM businesses WHERE id=$1`, id).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs, &b.PaymentInstructions)
 	return b, err
 }
 func (a *App) business(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +107,7 @@ func (a *App) updateBusiness(w http.ResponseWriter, r *http.Request) {
 	if in.ProfileType == "" {
 		in.ProfileType = "business"
 	}
-	if len(in.Name) < 2 || len(in.Name) > 120 || len(in.Description) > 2000 || len(in.Whatsapp) > 30 || len(in.Email) > 254 || len(in.Timezone) > 80 || len(in.ThemeColor) != 7 || in.ThemeColor[0] != '#' {
+	if len(in.Name) < 2 || len(in.Name) > 120 || len(in.Description) > 2000 || len(in.PaymentInstructions) > 1500 || len(in.Whatsapp) > 30 || len(in.Email) > 254 || len(in.Timezone) > 80 || len(in.ThemeColor) != 7 || in.ThemeColor[0] != '#' {
 		fail(w, 400, "Invalid business details")
 		return
 	}
@@ -173,17 +175,17 @@ func (a *App) updateBusiness(w http.ResponseWriter, r *http.Request) {
 	}
 	if oldCurrency != in.Currency {
 		var used bool
-		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM products WHERE business_id=$1) OR EXISTS(SELECT 1 FROM invoices WHERE business_id=$1)`, who(r).BusinessID).Scan(&used)
+		err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM products WHERE business_id=$1) OR EXISTS(SELECT 1 FROM invoices WHERE business_id=$1) OR EXISTS(SELECT 1 FROM quotes WHERE business_id=$1)`, who(r).BusinessID).Scan(&used)
 		if err != nil {
 			unavailable(w, r, err)
 			return
 		}
 		if used {
-			fail(w, 409, "Currency cannot change after products or invoices exist")
+			fail(w, 409, "Currency cannot change after listings, quotes, or invoices exist")
 			return
 		}
 	}
-	_, err = tx.Exec(r.Context(), `UPDATE businesses SET name=$1,description=$2,whatsapp=$3,email=$4,currency=$5,timezone=$6,theme_color=$7,published=$8,instagram_url=$9,facebook_url=$10,tiktok_url=$11,website_url=$12,profile_type=$13,creator_niche=$14,creator_location=$15,creator_portfolio_urls=$16 WHERE id=$17`, in.Name, in.Description, in.Whatsapp, in.Email, in.Currency, in.Timezone, in.ThemeColor, in.Published, in.InstagramURL, in.FacebookURL, in.TikTokURL, in.WebsiteURL, in.ProfileType, in.CreatorNiche, in.CreatorLocation, in.CreatorPortfolioURLs, who(r).BusinessID)
+	_, err = tx.Exec(r.Context(), `UPDATE businesses SET name=$1,description=$2,whatsapp=$3,email=$4,currency=$5,timezone=$6,theme_color=$7,published=$8,instagram_url=$9,facebook_url=$10,tiktok_url=$11,website_url=$12,profile_type=$13,creator_niche=$14,creator_location=$15,creator_portfolio_urls=$16,payment_instructions=$17 WHERE id=$18`, in.Name, in.Description, in.Whatsapp, in.Email, in.Currency, in.Timezone, in.ThemeColor, in.Published, in.InstagramURL, in.FacebookURL, in.TikTokURL, in.WebsiteURL, in.ProfileType, in.CreatorNiche, in.CreatorLocation, in.CreatorPortfolioURLs, strings.TrimSpace(in.PaymentInstructions), who(r).BusinessID)
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -488,13 +490,14 @@ type enquiry struct {
 	ProductName           string `json:"product_name"`
 	ProductPriceMinor     int64  `json:"product_price_minor"`
 	ProductPriceOnRequest bool   `json:"product_price_on_request"`
+	Stage                 string `json:"stage"`
 }
 
-const enquirySelect = `SELECT e.id::text,COALESCE(e.product_id::text,''),e.name,e.email,e.phone,e.message,e.created_at::text,e.brand_name,e.budget_minor,COALESCE(e.campaign_deadline::text,''),e.deliverables,e.usage_rights,COALESCE(p.name,''),COALESCE(p.price_minor,0),COALESCE(p.price_on_request,false) FROM enquiries e LEFT JOIN products p ON p.id=e.product_id AND p.business_id=e.business_id`
+const enquirySelect = `SELECT e.id::text,COALESCE(e.product_id::text,''),e.name,e.email,e.phone,e.message,e.created_at::text,e.brand_name,e.budget_minor,COALESCE(e.campaign_deadline::text,''),e.deliverables,e.usage_rights,COALESCE(p.name,''),COALESCE(p.price_minor,0),COALESCE(p.price_on_request,false),e.stage FROM enquiries e LEFT JOIN products p ON p.id=e.product_id AND p.business_id=e.business_id`
 
 func scanEnquiry(row scanner) (enquiry, error) {
 	var e enquiry
-	err := row.Scan(&e.ID, &e.ProductID, &e.Name, &e.Email, &e.Phone, &e.Message, &e.CreatedAt, &e.BrandName, &e.BudgetMinor, &e.CampaignDeadline, &e.Deliverables, &e.UsageRights, &e.ProductName, &e.ProductPriceMinor, &e.ProductPriceOnRequest)
+	err := row.Scan(&e.ID, &e.ProductID, &e.Name, &e.Email, &e.Phone, &e.Message, &e.CreatedAt, &e.BrandName, &e.BudgetMinor, &e.CampaignDeadline, &e.Deliverables, &e.UsageRights, &e.ProductName, &e.ProductPriceMinor, &e.ProductPriceOnRequest, &e.Stage)
 	return e, err
 }
 
@@ -554,11 +557,17 @@ func (a *App) publicEnquiry(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	e.ID = newID()
+	tx, err := a.DB.Begin(r.Context())
+	if err != nil {
+		unavailable(w, r, err)
+		return
+	}
+	defer tx.Rollback(r.Context())
 	var deadline any
 	if e.CampaignDeadline != "" {
 		deadline = e.CampaignDeadline
 	}
-	_, err := a.DB.Exec(r.Context(), `INSERT INTO enquiries(id,business_id,product_id,name,email,phone,message,brand_name,budget_minor,campaign_deadline,deliverables,usage_rights) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, e.ID, businessID, productID, e.Name, e.Email, e.Phone, e.Message, e.BrandName, e.BudgetMinor, deadline, e.Deliverables, e.UsageRights)
+	_, err = tx.Exec(r.Context(), `INSERT INTO enquiries(id,business_id,product_id,name,email,phone,message,brand_name,budget_minor,campaign_deadline,deliverables,usage_rights) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, e.ID, businessID, productID, e.Name, e.Email, e.Phone, e.Message, e.BrandName, e.BudgetMinor, deadline, e.Deliverables, e.UsageRights)
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
@@ -566,6 +575,15 @@ func (a *App) publicEnquiry(w http.ResponseWriter, r *http.Request) {
 		} else {
 			unavailable(w, r, err)
 		}
+		return
+	}
+	_, err = tx.Exec(r.Context(), `INSERT INTO merchant_notifications(id,business_id,kind,subject_id,title) VALUES($1,$2,'enquiry',$3,'New storefront enquiry') ON CONFLICT DO NOTHING`, newID(), businessID, e.ID)
+	if err != nil {
+		unavailable(w, r, err)
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		unavailable(w, r, err)
 		return
 	}
 	writeJSON(w, 201, map[string]string{"id": e.ID})

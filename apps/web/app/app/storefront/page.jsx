@@ -5,12 +5,15 @@ import { useState } from "react";
 import { api, errorMessage } from "../../../lib/api";
 import { Badge, Icon, Notice, PageHeader } from "../../../components/ui";
 import { useWorkspace } from "../layout";
+import StorefrontShare from "../../../components/storefront-share";
 
 export default function Storefront() {
   const { business, setBusiness } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
-    [profileType, setProfileType] = useState(business.profile_type || "business");
+    [profileType, setProfileType] = useState(
+      business.profile_type || "business",
+    );
   const link = `/store/${business.slug}`;
   async function save(e) {
     e.preventDefault();
@@ -134,11 +137,14 @@ export default function Storefront() {
                   Portfolio links (one HTTPS URL per line, up to six)
                   <textarea
                     name="creator_portfolio_urls"
-                    defaultValue={(business.creator_portfolio_urls || []).join("\n")}
+                    defaultValue={(business.creator_portfolio_urls || []).join(
+                      "\n",
+                    )}
                     placeholder="https://..."
                   />
                   <span className="helper">
-                    Link to your best work. Only add content you have permission to share.
+                    Link to your best work. Only add content you have permission
+                    to share.
                   </span>
                 </label>
               </>
@@ -171,7 +177,9 @@ export default function Storefront() {
                   defaultValue={business.whatsapp}
                 />
                 <span className="helper">
-                  {profileType === "creator" ? "Optional when you provide a contact email. Brands can send briefs through your profile." : "Required to publish. Include your country code, for example +263771234567. Customers will open a chat with this number."}
+                  {profileType === "creator"
+                    ? "Optional when you provide a contact email. Brands can send briefs through your profile."
+                    : "Required to publish. Include your country code, for example +263771234567. Customers will open a chat with this number."}
                 </span>
               </label>
               <label className="field">
@@ -200,6 +208,19 @@ export default function Storefront() {
                 type="color"
                 defaultValue={business.theme_color}
               />
+            </label>
+            <label className="field">
+              Payment instructions for invoices
+              <textarea
+                name="payment_instructions"
+                maxLength={1500}
+                defaultValue={business.payment_instructions || ""}
+                placeholder="Tell customers which payment methods you accept and how to pay you directly."
+              />
+              <span className="helper">
+                Shown on private invoice links. Do not include passwords or
+                private account credentials.
+              </span>
             </label>
             <h3 style={{ fontSize: 15, marginTop: 25 }}>Social links</h3>
             <p className="helper">
@@ -262,6 +283,9 @@ export default function Storefront() {
           </form>
         </section>
         <aside className="stack">
+          {business.published && (
+            <StorefrontShare slug={business.slug} name={business.name} />
+          )}
           <section className="panel">
             <span className="eyebrow">YOUR SHAREABLE LINK</span>
             <h2>Put your business out there.</h2>

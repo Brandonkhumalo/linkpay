@@ -13,10 +13,13 @@ export function useWorkspace() {
 
 const links = [
   ["/app", "Overview", "grid"],
+  ["/app/activity", "Activity", "bell"],
   ["/app/storefront", "Storefront", "shop"],
   ["/app/products", "Products & services", "box"],
   ["/app/enquiries", "Enquiries", "chat"],
+  ["/app/quotes", "Quotes", "file"],
   ["/app/customers", "Customers", "users"],
+  ["/app/followups", "Follow-ups", "bell"],
   ["/app/invoices", "Invoices", "file"],
   ["/app/reminders", "Reminders", "bell"],
   ["/app/billing", "Billing", "card"],

@@ -4,7 +4,12 @@ import { useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import { Notice } from "./ui";
 
-export default function PublicEnquiry({ slug, product, creator = false, currency = "USD" }) {
+export default function PublicEnquiry({
+  slug,
+  product,
+  creator = false,
+  currency = "USD",
+}) {
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
@@ -28,11 +33,16 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
     try {
       await api(`/public/stores/${encodeURIComponent(slug)}/enquiries`, {
         method: "POST",
-        body: JSON.stringify({ ...data, ...(product?.id ? { product_id: product.id } : {}) }),
+        body: JSON.stringify({
+          ...data,
+          ...(product?.id ? { product_id: product.id } : {}),
+        }),
       });
-      setMessage(creator
-        ? "Your brief was sent. The creator can contact you using the details provided."
-        : "Your enquiry was sent. The business can contact you using the details provided.");
+      setMessage(
+        creator
+          ? "Your brief was sent. The creator can contact you using the details provided."
+          : "Your enquiry was sent. The business can contact you using the details provided.",
+      );
       setOpen(false);
     } catch (error) {
       setError(errorMessage(error));
@@ -68,7 +78,11 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
             aria-label="Send an enquiry"
           >
             <div className="modal-head">
-              <h2>{creator ? "Propose a collaboration" : `Ask about ${product.name}`}</h2>
+              <h2>
+                {creator
+                  ? "Propose a collaboration"
+                  : `Ask about ${product.name}`}
+              </h2>
               <button
                 className="modal-close"
                 aria-label="Close"
@@ -87,16 +101,33 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
                 <>
                   <label className="field">
                     Brand or agency name
-                    <input name="brand_name" required minLength={2} maxLength={160} />
+                    <input
+                      name="brand_name"
+                      required
+                      minLength={2}
+                      maxLength={160}
+                    />
                   </label>
                   <label className="field">
                     Deliverables
-                    <textarea name="deliverables" required minLength={5} maxLength={2000} placeholder="For example, two short videos and one story" />
+                    <textarea
+                      name="deliverables"
+                      required
+                      minLength={5}
+                      maxLength={2000}
+                      placeholder="For example, two short videos and one story"
+                    />
                   </label>
                   <div className="form-grid">
                     <label className="field">
                       Budget ({currency}, optional)
-                      <input name="budget" type="number" min="0" max="1000000000" step="0.01" />
+                      <input
+                        name="budget"
+                        type="number"
+                        min="0"
+                        max="1000000000"
+                        step="0.01"
+                      />
                     </label>
                     <label className="field">
                       Target date (optional)
@@ -105,7 +136,11 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
                   </div>
                   <label className="field">
                     Content usage rights (optional)
-                    <textarea name="usage_rights" maxLength={1000} placeholder="Where and for how long will the brand use the content?" />
+                    <textarea
+                      name="usage_rights"
+                      maxLength={1000}
+                      placeholder="Where and for how long will the brand use the content?"
+                    />
                   </label>
                 </>
               )}
@@ -130,9 +165,11 @@ export default function PublicEnquiry({ slug, product, creator = false, currency
                   required
                   minLength={5}
                   maxLength={3000}
-                  defaultValue={product?.name
-                    ? `I'm interested in ${product.name}.`
-                    : "We'd like to discuss a collaboration."}
+                  defaultValue={
+                    product?.name
+                      ? `I'm interested in ${product.name}.`
+                      : "We'd like to discuss a collaboration."
+                  }
                 />
               </label>
               <button className="button button-dark" disabled={busy}>

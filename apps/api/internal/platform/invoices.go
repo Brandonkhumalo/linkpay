@@ -144,62 +144,21 @@ func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid discount or tax")
 		return
 	}
-	total := subtotal - in.DiscountMinor + in.TaxMinor
 	tx, err := a.DB.Begin(r.Context())
 	if err != nil {
 		unavailable(w, r, err)
 		return
 	}
 	defer tx.Rollback(r.Context())
-	var plan, currency string
-	var number int64
-	err = tx.QueryRow(r.Context(), `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,currency,next_invoice_number FROM businesses WHERE id=$1 FOR UPDATE`, who(r).BusinessID).Scan(&plan, &currency, &number)
-	if err != nil {
-		unavailable(w, r, err)
+	id, number, err := a.insertDraftInvoice(r.Context(), tx, who(r).BusinessID, who(r).UserID, in, "")
+	if errors.Is(err, errInvoiceQuota) {
+		fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
 		return
 	}
-	monthlyUsed, topupBalance, err := invoiceQuota(r.Context(), tx, who(r).BusinessID)
-	if err != nil {
-		unavailable(w, r, err)
-		return
-	}
-	quotaSource := "subscription"
-	if monthlyUsed >= planInvoiceLimit(plan) {
-		if topupBalance <= 0 {
-			fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
-			return
-		}
-		quotaSource = "invoice_topup"
-	}
-	var exists bool
-	err = tx.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM customers WHERE id=$1 AND business_id=$2)`, in.CustomerID, who(r).BusinessID).Scan(&exists)
-	if err != nil {
-		unavailable(w, r, err)
-		return
-	}
-	if !exists {
+	if errors.Is(err, pgx.ErrNoRows) {
 		fail(w, 400, "Customer not found")
 		return
 	}
-	id := newID()
-	_, err = tx.Exec(r.Context(), `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,discount_minor,tax_minor,total_minor,notes,quota_source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, who(r).BusinessID, in.CustomerID, number, currency, in.DueAt, subtotal, in.DiscountMinor, in.TaxMinor, total, in.Notes, quotaSource)
-	if err != nil {
-		unavailable(w, r, err)
-		return
-	}
-	for _, it := range in.Items {
-		_, err = tx.Exec(r.Context(), `INSERT INTO invoice_items(id,business_id,invoice_id,description,quantity,unit_minor,total_minor) VALUES($1,$2,$3,$4,$5,$6,$7)`, newID(), who(r).BusinessID, id, it.Description, it.Quantity, it.UnitMinor, it.TotalMinor)
-		if err != nil {
-			unavailable(w, r, err)
-			return
-		}
-	}
-	_, err = tx.Exec(r.Context(), `UPDATE businesses SET next_invoice_number=next_invoice_number+1 WHERE id=$1`, who(r).BusinessID)
-	if err != nil {
-		unavailable(w, r, err)
-		return
-	}
-	_, err = tx.Exec(r.Context(), `INSERT INTO audit_logs(id,business_id,actor_id,action,subject_id) VALUES($1,$2,$3,'invoice.created',$4)`, newID(), who(r).BusinessID, who(r).UserID, id)
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -366,6 +325,7 @@ type paymentInput struct {
 	Method         string `json:"method"`
 	Reference      string `json:"reference"`
 	IdempotencyKey string `json:"idempotency_key"`
+	ClaimID        string `json:"claim_id"`
 }
 
 func (a *App) recordPayment(w http.ResponseWriter, r *http.Request) {
@@ -375,7 +335,7 @@ func (a *App) recordPayment(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Method = strings.TrimSpace(in.Method)
 	in.Reference = strings.TrimSpace(in.Reference)
-	if in.AmountMinor <= 0 || in.AmountMinor > 1000000000000 || len(in.Method) < 2 || len(in.Method) > 50 || len(in.Reference) > 120 || len(in.IdempotencyKey) < 16 || len(in.IdempotencyKey) > 100 {
+	if in.AmountMinor <= 0 || in.AmountMinor > 1000000000000 || len(in.Method) < 2 || len(in.Method) > 50 || len(in.Reference) > 120 || len(in.IdempotencyKey) < 16 || len(in.IdempotencyKey) > 100 || (in.ClaimID != "" && !validID(in.ClaimID)) {
 		fail(w, 400, "Invalid payment")
 		return
 	}
@@ -430,10 +390,33 @@ func (a *App) recordPayment(w http.ResponseWriter, r *http.Request) {
 		fail(w, 409, "Payment exceeds outstanding balance")
 		return
 	}
+	if in.ClaimID != "" {
+		var claimAmount int64
+		var claimReference string
+		err = tx.QueryRow(r.Context(), `SELECT amount_minor,reference FROM payment_claims WHERE id=$1 AND invoice_id=$2 AND business_id=$3 AND status='pending' FOR UPDATE`, in.ClaimID, id, who(r).BusinessID).Scan(&claimAmount, &claimReference)
+		if errors.Is(err, pgx.ErrNoRows) {
+			fail(w, 409, "Payment report is no longer pending")
+			return
+		}
+		if err != nil {
+			unavailable(w, r, err)
+			return
+		}
+		if claimAmount != in.AmountMinor || claimReference != in.Reference {
+			fail(w, 409, "Payment details differ from the customer report")
+			return
+		}
+	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO payments(id,business_id,invoice_id,amount_minor,method,reference,idempotency_key,recorded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, newID(), who(r).BusinessID, id, in.AmountMinor, in.Method, in.Reference, in.IdempotencyKey, who(r).UserID)
 	if err != nil {
 		unavailable(w, r, err)
 		return
+	}
+	if in.ClaimID != "" {
+		if _, err = tx.Exec(r.Context(), `UPDATE payment_claims SET status='verified',resolved_at=now() WHERE id=$1 AND invoice_id=$2 AND business_id=$3`, in.ClaimID, id, who(r).BusinessID); err != nil {
+			unavailable(w, r, err)
+			return
+		}
 	}
 	_, err = tx.Exec(r.Context(), `INSERT INTO audit_logs(id,business_id,actor_id,action,subject_id,details) VALUES($1,$2,$3,'payment.recorded',$4,jsonb_build_object('amount_minor',$5::bigint,'method',$6::text))`, newID(), who(r).BusinessID, who(r).UserID, id, in.AmountMinor, in.Method)
 	if err != nil {
@@ -475,7 +458,7 @@ func (a *App) publicInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 	v.CustomerEmail = "" // The bearer link does not expose contact details.
 	v.CustomerPhone = ""
-	writeJSON(w, 200, map[string]any{"invoice": v, "business": map[string]string{"name": b.Name, "email": b.Email, "whatsapp": b.Whatsapp}})
+	writeJSON(w, 200, map[string]any{"invoice": v, "business": map[string]string{"name": b.Name, "email": b.Email, "whatsapp": b.Whatsapp, "payment_instructions": b.PaymentInstructions}})
 }
 func money(n int64) string { return fmt.Sprintf("%d.%02d", n/100, n%100) }
 func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
@@ -524,6 +507,10 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	if v.Notes != "" {
 		p.Ln(8)
 		p.MultiCell(0, 7, "Notes: "+v.Notes, "", "L", false)
+	}
+	if b.PaymentInstructions != "" {
+		p.Ln(8)
+		p.MultiCell(0, 7, "How to pay: "+b.PaymentInstructions, "", "L", false)
 	}
 	var buf bytes.Buffer
 	if err = p.Output(&buf); err != nil {

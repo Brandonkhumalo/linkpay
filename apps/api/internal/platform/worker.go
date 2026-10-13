@@ -136,6 +136,69 @@ func (a *App) RunReminders(ctx context.Context) error {
 	}
 	return nil
 }
+
+func (a *App) RunNotifications(ctx context.Context) error {
+	for n := 0; n < 100; n++ {
+		var id, kind, recipient, business string
+		var attempts int
+		err := a.DB.QueryRow(ctx, `WITH picked AS (
+		 SELECT n.id FROM merchant_notifications n
+		 WHERE n.email_status IN ('pending','sending') AND n.next_attempt_at<=now()
+		 ORDER BY n.created_at FOR UPDATE SKIP LOCKED LIMIT 1
+		) UPDATE merchant_notifications n SET email_status='sending',attempts=attempts+1,next_attempt_at=now()+interval '10 minutes'
+		FROM picked,businesses b WHERE n.id=picked.id AND b.id=n.business_id
+		RETURNING n.id::text,n.kind,
+		 COALESCE((SELECT u.email FROM business_members m JOIN users u ON u.id=m.user_id WHERE m.business_id=n.business_id AND m.role='owner' ORDER BY u.id LIMIT 1),''),
+		 b.name,n.attempts`).Scan(&id, &kind, &recipient, &business, &attempts)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if recipient == "" {
+			if _, err = a.DB.Exec(ctx, `UPDATE merchant_notifications SET email_status='disabled' WHERE id=$1`, id); err != nil {
+				return err
+			}
+			continue
+		}
+		if kind == "followup" {
+			var open bool
+			if err = a.DB.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM customer_followups f JOIN merchant_notifications n ON n.subject_id=f.id WHERE n.id=$1 AND f.business_id=n.business_id AND f.completed_at IS NULL)`, id).Scan(&open); err != nil {
+				return err
+			}
+			if !open {
+				if _, err = a.DB.Exec(ctx, `UPDATE merchant_notifications SET email_status='disabled' WHERE id=$1`, id); err != nil {
+					return err
+				}
+				continue
+			}
+		}
+		subject := "New activity on LinkPay"
+		body := fmt.Sprintf("Hello %s,\r\n\r\nYou have new %s activity. Sign in to review it: %s/app\r\n", business, strings.ReplaceAll(kind, "_", " "), a.PublicURL)
+		err = sendPlainEmail(recipient, subject, body)
+		status := "sent"
+		if err != nil {
+			status = "pending"
+			if attempts >= 3 {
+				status = "failed"
+			}
+		}
+		if _, updateErr := a.DB.Exec(ctx, `UPDATE merchant_notifications SET email_status=$1,next_attempt_at=now()+interval '1 hour' WHERE id=$2`, status, id); updateErr != nil {
+			return updateErr
+		}
+	}
+	return nil
+}
+
+func (a *App) RunFollowupAlerts(ctx context.Context) error {
+	_, err := a.DB.Exec(ctx, `INSERT INTO merchant_notifications(id,business_id,kind,subject_id,title)
+	 SELECT gen_random_uuid(),f.business_id,'followup',f.id,'Customer follow-up due'
+	 FROM customer_followups f JOIN businesses b ON b.id=f.business_id
+	 WHERE f.completed_at IS NULL AND f.due_on<=timezone(b.timezone,now())::date
+	 ON CONFLICT(business_id,kind,subject_id) DO NOTHING`)
+	return err
+}
 func (a *App) sendReminder(j reminderJob) error {
 	subject := fmt.Sprintf("Invoice %06d payment reminder", j.Number)
 	link := a.PublicURL + "/invoice/" + a.invoiceToken(j.InvoiceID)

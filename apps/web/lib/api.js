@@ -54,3 +54,10 @@ export function pageNumber(value) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 && parsed <= 10000 ? parsed : 1;
 }
+
+export function notificationDestination(kind) {
+  if (kind === "enquiry") return "/app/enquiries";
+  if (kind === "followup") return "/app/followups";
+  if (kind.startsWith("quote")) return "/app/quotes";
+  return "/app/invoices";
+}
