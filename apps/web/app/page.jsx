@@ -33,7 +33,8 @@ export default function Home() {
             </h1>
             <p>
               Showcase products, services, or creator work. Turn enquiries and
-              brand briefs into invoices, and stay on top of every payment.
+              brand briefs into invoices, then track payments you receive
+              directly.
             </p>
             <div className="hero-cta">
               <Link className="button button-primary" href="/register">
@@ -56,7 +57,7 @@ export default function Home() {
             <div className="float-card float-paid">
               <span className="float-icon">✓</span>
               <div>
-                <strong>Payment received</strong>
+                <strong>Payment recorded</strong>
                 <small>Invoice #000024 · USD 120.00</small>
               </div>
             </div>
@@ -69,7 +70,7 @@ export default function Home() {
                 <small>Wednesday, 12 March</small>
               </div>
               <div className="demo-content">
-                <div className="demo-label">TOTAL REVENUE</div>
+                <div className="demo-label">PAYMENTS RECORDED</div>
                 <div className="demo-amount">
                   $12,840<span>.00</span>
                 </div>
@@ -112,7 +113,7 @@ export default function Home() {
           </div>
         </section>
         <section className="logo-strip">
-          <span>FROM FIRST HELLO TO FINAL PAYMENT</span>
+          <span>FROM FIRST HELLO TO PAYMENT TRACKING</span>
           <div>
             <span>Discover</span>
             <b>→</b>
@@ -120,7 +121,7 @@ export default function Home() {
             <b>→</b>
             <span>Invoice</span>
             <b>→</b>
-            <span>Get paid</span>
+            <span>Record payment</span>
           </div>
         </section>
         <section className="marketing-section features-section" id="features">
@@ -166,7 +167,7 @@ export default function Home() {
               </p>
             </article>
             <article className="feature-card feature-lilac">
-              <div className="feature-number">03 / GET PAID</div>
+              <div className="feature-number">03 / TRACK PAYMENTS</div>
               <div className="feature-illustration feature-invoice">
                 <span>INVOICE #000024</span>
                 <strong>USD 120.00</strong>
@@ -175,7 +176,7 @@ export default function Home() {
               <h3>Invoices made simple</h3>
               <p>
                 Create, send, and track invoices, then follow up when a balance
-                is due.
+                is due. Customers pay you outside LinkPay.
               </p>
             </article>
           </div>
@@ -221,7 +222,7 @@ export default function Home() {
               <span>04</span>
               <div>
                 <h3>Keep moving</h3>
-                <p>Record payments and stay in control of what is due.</p>
+                <p>Record money received outside LinkPay and track what is due.</p>
               </div>
             </li>
           </ol>

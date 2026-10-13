@@ -7,7 +7,7 @@ LinkPay is a multi-tenant storefront and invoicing application built with a Go A
 - Registration, password login and reset by email, server-side sessions, business profiles, and optional storefront publishing. Registration reserves a storefront slug; invoice-only accounts can leave it unpublished.
 - Product and service listings with plan limits; WhatsApp links to the shop's international-format number, structured customer enquiries, and a public directory of published shops.
 - Customer directory, draft invoices, numbered and branded PDF invoices, private issue links, and revocation when voiding an unpaid invoice.
-- Atomic manual payment recording with idempotency keys, partial balances, derived statuses, and audit records.
+- Atomic recording of customer payments received outside LinkPay, with idempotency keys, partial balances, derived statuses, and audit records.
 - Email reminder scheduling for paid-plan tenants with a PostgreSQL job table, retry limits, and delivery history.
 - Overview totals, monthly usage, and aggregate admin monitoring protected by an additional TOTP code.
 - Routed, responsive Next.js landing, authentication, public storefront and invoice pages, and a dedicated workspace with separate pages for storefront, products, enquiries, customers, invoices, reminders, billing, and settings.
@@ -44,9 +44,9 @@ Owners can also buy **30 extra invoices for USD 1** or **100 for USD 2** through
 
 Create an **Advanced Integration** in Paynow, then set `PAYNOW_INTEGRATION_ID` and `PAYNOW_INTEGRATION_KEY` in `.env`. Set `PUBLIC_URL` to the public HTTPS origin before testing checkout; Paynow must reach `/api/v1/billing/paynow/result`. Only business owners can start checkout. LinkPay validates Paynow's SHA-512 response hash, polls Paynow on important updates, verifies the reference and amount, and grants time-limited access in a database transaction. A browser return does not grant access. Lost callbacks can be recovered from the payment history or by the worker's delayed reconciliation.
 
-Paid plans are **prepaid and manually renewed**. The integration does not tokenize payment instruments or attempt automatic recurring charges. Prices are USD 3/5 monthly and USD 36/60 annually; confirm the merchant integration's supported settlement currency and fees with Paynow before launch. Customer invoice payments remain merchant-managed and are recorded manually, as specified for the initial customer journey.
+Paid plans are **prepaid and manually renewed**. The integration does not tokenize payment instruments or attempt automatic recurring charges. Prices are USD 3/5 monthly and USD 36/60 annually; confirm the merchant integration's supported settlement currency and fees with Paynow before launch. **Only LinkPay subscriptions and invoice top-ups are paid through the system.** Customers and brand partners pay merchants or creators outside LinkPay; account owners record those payments after receiving them. Public invoice links are for viewing invoices, not paying them.
 
-Creator collaboration is a direct enquiry and invoicing workflow. LinkPay does not verify audience metrics, broker agreements, hold funds in escrow, or automatically collect brand payments. Portfolio links are supplied by creators; brands should confirm deliverables and rights before paying.
+Creator collaboration is a direct enquiry and invoicing workflow. LinkPay does not verify audience metrics, broker agreements, hold funds in escrow, or collect brand payments. Portfolio links are supplied by creators; brands should confirm deliverables and rights before paying the creator directly.
 
 Paynow starts new integrations in test mode. Complete Paynow's fake success and cancellation flows and request live activation using your merchant account. Test with a publicly reachable HTTPS domain or tunnel; checkout is deliberately unavailable when `PUBLIC_URL` is HTTP. See [Paynow test mode](https://developers.paynow.co.zw/docs/paynow/test_mode/) and [integration setup](https://developers.paynow.co.zw/docs/paynow/integration_generation/).
 

@@ -406,7 +406,8 @@ function NewInvoiceContent() {
             <h2>What happens next?</h2>
             <p>
               Your invoice starts as a draft. Issue it to create a shareable
-              payment link and branded PDF.
+              invoice link and branded PDF. Customers pay you outside LinkPay;
+              record the payment here after you receive it.
             </p>
           </section>
         </aside>
