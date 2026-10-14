@@ -88,8 +88,12 @@ func (a *App) confirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
-	if len(in.Token) != 64 || len(in.Password) < 12 || len(in.Password) > 72 {
+	if len(in.Token) != 64 {
 		fail(w, 400, "Invalid or expired reset request")
+		return
+	}
+	if !validNewPassword(in.Password) {
+		fail(w, 400, passwordRequirements)
 		return
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)

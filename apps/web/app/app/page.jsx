@@ -276,15 +276,29 @@ export default function Overview() {
           </section>
           <section className="panel" style={{ background: "#e9f2e0" }}>
             <span className="eyebrow">YOUR PUBLIC LINK</span>
-            <h2>Ready to share?</h2>
-            <p>Make it easy for customers to discover what you offer.</p>
-            <Link
-              className="button button-dark small"
-              href={`/store/${business.slug}`}
-              target="_blank"
-            >
-              Open storefront <Icon name="external" size={14} />
-            </Link>
+            <h2>
+              {business.published
+                ? "Ready to share?"
+                : "Set up your storefront"}
+            </h2>
+            <p>
+              {business.published
+                ? "Make it easy for customers to discover what you offer."
+                : "Add your details, then publish your storefront before opening its public link."}
+            </p>
+            {business.published ? (
+              <Link
+                className="button button-dark small"
+                href={`/store/${business.slug}`}
+                target="_blank"
+              >
+                Open storefront <Icon name="external" size={14} />
+              </Link>
+            ) : (
+              <Link className="button button-dark small" href="/app/storefront">
+                Set up storefront →
+              </Link>
+            )}
           </section>
         </div>
       </div>

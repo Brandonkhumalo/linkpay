@@ -51,6 +51,7 @@ export function Products({ page }) {
   const [editing, setEditing] = useState(null);
   const [quote, setQuote] = useState(false);
   const [kind, setKind] = useState("product");
+  const [price, setPrice] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const result = useResource(`/products?page=${page}`, key);
@@ -58,6 +59,11 @@ export function Products({ page }) {
     setEditing(listing);
     setQuote(Boolean(listing.price_on_request));
     setKind(listing.kind || "product");
+    setPrice(
+      !listing.price_on_request && listing.price_minor != null
+        ? (listing.price_minor / 100).toFixed(2)
+        : "",
+    );
   }
   async function save(e) {
     e.preventDefault();
@@ -266,21 +272,44 @@ export function Products({ page }) {
                 maxLength={2000}
               />
             </label>
-            <div className="form-grid">
-              <label className="field">
-                Type
-                <select
-                  name="kind"
-                  value={kind}
-                  onChange={(event) => {
-                    setKind(event.target.value);
-                    if (event.target.value !== "service") setQuote(false);
-                  }}
-                >
-                  <option value="product">Product</option>
-                  <option value="service">Service</option>
-                </select>
-              </label>
+            <label className="field">
+              Type
+              <select
+                name="kind"
+                value={kind}
+                onChange={(event) => {
+                  setKind(event.target.value);
+                  if (event.target.value !== "service") setQuote(false);
+                }}
+              >
+                <option value="product">Product</option>
+                <option value="service">Service</option>
+              </select>
+            </label>
+            {kind === "service" && (
+              <fieldset className="listing-pricing">
+                <legend>How should customers see the price?</legend>
+                <label>
+                  <input
+                    type="radio"
+                    name="pricing_mode"
+                    checked={!quote}
+                    onChange={() => setQuote(false)}
+                  />
+                  Show my fixed price
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="pricing_mode"
+                    checked={quote}
+                    onChange={() => setQuote(true)}
+                  />
+                  Price on request for custom work
+                </label>
+              </fieldset>
+            )}
+            {!quote && (
               <label className="field">
                 Price ({business.currency})
                 <input
@@ -289,24 +318,15 @@ export function Products({ page }) {
                   min="0"
                   max="1000000000"
                   step="0.01"
-                  defaultValue={
-                    editing.price_minor != null
-                      ? (editing.price_minor / 100).toFixed(2)
-                      : ""
-                  }
-                  required={!quote}
-                  disabled={quote}
+                  value={price}
+                  onChange={(event) => setPrice(event.target.value)}
+                  required
                 />
-              </label>
-            </div>
-            {kind === "service" && (
-              <label className="field checkbox-field">
-                <input
-                  type="checkbox"
-                  checked={quote}
-                  onChange={(event) => setQuote(event.target.checked)}
-                />{" "}
-                Price on request for custom work
+                <span className="helper">
+                  {business.profile_type === "creator"
+                    ? "Brand partners will see this price and can send a brief without requesting a quote."
+                    : "Customers will see this price and can request an invoice without asking for a quote."}
+                </span>
               </label>
             )}
             <label className="field">

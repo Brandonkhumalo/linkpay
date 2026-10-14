@@ -106,13 +106,13 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 		return res.StatusCode, data, session
 	}
 	register := func(email, slug, trialPlan string) *http.Cookie {
-		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": email, "password": "a-long-test-password", "business_name": slug, "slug": slug, "trial_plan": trialPlan}, nil)
+		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": email, "password": "A-long-test-password1!", "business_name": slug, "slug": slug, "trial_plan": trialPlan}, nil)
 		if status != 201 || cookie == nil {
 			t.Fatalf("register %s: %d", email, status)
 		}
 		return cookie
 	}
-	status, _, _ := request("POST", "/api/v1/auth/register", map[string]any{"email": "invalid-trial@example.test", "password": "a-long-test-password", "business_name": "Invalid Trial", "slug": "invalid-trial", "trial_plan": "premium"}, nil)
+	status, _, _ := request("POST", "/api/v1/auth/register", map[string]any{"email": "invalid-trial@example.test", "password": "A-long-test-password1!", "business_name": "Invalid Trial", "slug": "invalid-trial", "trial_plan": "premium"}, nil)
 	if status != 400 {
 		t.Fatalf("invalid signup plan accepted: %d", status)
 	}
@@ -129,7 +129,7 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if status != 200 || freeSubscription["plan"] != "free" || freeSubscription["trial_active"] != false || freeSubscription["invoice_monthly_limit"] != float64(30) {
 		t.Fatalf("free signup subscription: %d %v", status, freeSubscription)
 	}
-	status, _, _ = request("POST", "/api/v1/auth/register", map[string]any{"email": "tenant-default@example.test", "password": "a-long-test-password", "business_name": "Default Free", "slug": "tenant-default"}, nil)
+	status, _, _ = request("POST", "/api/v1/auth/register", map[string]any{"email": "tenant-default@example.test", "password": "A-long-test-password1!", "business_name": "Default Free", "slug": "tenant-default"}, nil)
 	if status != 201 {
 		t.Fatalf("signup without plan did not default to Free: %d", status)
 	}
@@ -512,7 +512,7 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if _, err = a.DB.Exec(ctx, `INSERT INTO password_reset_tokens(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 minutes')`, hash(resetToken), userID); err != nil {
 		t.Fatal(err)
 	}
-	status, _, _ = request("POST", "/api/v1/auth/password-reset/confirm", map[string]any{"token": resetToken, "password": "a-new-long-test-password"}, nil)
+	status, _, _ = request("POST", "/api/v1/auth/password-reset/confirm", map[string]any{"token": resetToken, "password": "A-new-long-test-password1!"}, nil)
 	if status != 200 {
 		t.Fatalf("password reset failed: %d", status)
 	}

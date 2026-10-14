@@ -7,11 +7,35 @@ import (
 )
 
 func TestRegistrationPayloadMatchesWebForm(t *testing.T) {
-	r := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`{"email":"owner@example.test","password":"long-enough-password","business_name":"Example Shop","slug":"example-shop","trial_plan":"starter"}`))
+	r := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`{"email":"owner@example.test","password":"Aa1!x","business_name":"Example Shop","slug":"example-shop","trial_plan":"starter"}`))
 	w := httptest.NewRecorder()
 	var input registerInput
 	if !decode(w, r, &input) || input.BusinessName != "Example Shop" || input.TrialPlan != "starter" {
 		t.Fatalf("registration form rejected: status=%d input=%+v", w.Code, input)
+	}
+}
+
+func TestValidNewPassword(t *testing.T) {
+	tests := []struct {
+		password string
+		want     bool
+	}{
+		{"Aa1!x", true},
+		{"Aa1!", false},
+		{"aa1!x", false},
+		{"AA1!X", false},
+		{"Aa!xx", false},
+		{"Aa1xx", false},
+		{"Aa1 x", false},
+		{"Aa1!" + strings.Repeat("x", 68), true},
+		{"Aa1!" + strings.Repeat("x", 69), false},
+		{"Aa1!é", true},
+		{"Aa1!" + strings.Repeat("é", 35), false},
+	}
+	for _, tc := range tests {
+		if got := validNewPassword(tc.password); got != tc.want {
+			t.Errorf("validNewPassword(%q) = %t, want %t", tc.password, got, tc.want)
+		}
 	}
 }
 

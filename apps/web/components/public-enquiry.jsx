@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { api, errorMessage } from "../lib/api";
+import { api, errorMessage, money } from "../lib/api";
 import { Notice } from "./ui";
 
 export default function PublicEnquiry({
@@ -59,7 +59,11 @@ export default function PublicEnquiry({
           setMessage("");
         }}
       >
-        {creator ? "Send partnership brief →" : "Request invoice →"}
+        {creator
+          ? "Send partnership brief →"
+          : product?.price_on_request
+            ? "Request a quote →"
+            : "Request invoice →"}
       </button>
       {message && (
         <div className="notice notice-success" role="status">
@@ -81,7 +85,9 @@ export default function PublicEnquiry({
               <h2>
                 {creator
                   ? "Propose a collaboration"
-                  : `Ask about ${product.name}`}
+                  : product?.price_on_request
+                    ? `Request a quote for ${product.name}`
+                    : `Request an invoice for ${product.name}`}
               </h2>
               <button
                 className="modal-close"
@@ -92,6 +98,9 @@ export default function PublicEnquiry({
               </button>
             </div>
             <p className="muted">
+              {product && !product.price_on_request
+                ? `Listed price: ${money(product.price_minor, currency)}. `
+                : ""}
               Share a little about what you need. The business will follow up
               directly.
             </p>

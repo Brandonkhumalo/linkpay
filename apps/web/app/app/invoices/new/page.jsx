@@ -21,9 +21,7 @@ function NewInvoiceContent() {
     [productPage, setProductPage] = useState(1),
     [selected, setSelected] = useState(null),
     [creatingCustomer, setCreatingCustomer] = useState(false),
-    [items, setItems] = useState([
-      { description: "", quantity: 1, unit_price: "" },
-    ]),
+    [items, setItems] = useState([]),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   const [source, setSource] = useState(null);
@@ -38,16 +36,19 @@ function NewInvoiceContent() {
       .then((enquiry) => {
         if (!active) return;
         setSource(enquiry);
-        setItems([
-          {
-            description: enquiry.product_name || "",
-            quantity: 1,
-            unit_price:
-              enquiry.product_name && !enquiry.product_price_on_request
-                ? (enquiry.product_price_minor / 100).toFixed(2)
-                : "",
-          },
-        ]);
+        setItems(
+          enquiry.product_name
+            ? [
+                {
+                  description: enquiry.product_name,
+                  quantity: 1,
+                  unit_price: enquiry.product_price_on_request
+                    ? ""
+                    : (enquiry.product_price_minor / 100).toFixed(2),
+                },
+              ]
+            : [],
+        );
         setCreatingCustomer(true);
       })
       .catch((requestError) => {
@@ -63,6 +64,13 @@ function NewInvoiceContent() {
       current.map((item, i) =>
         i === index ? { ...item, [key]: value } : item,
       ),
+    );
+  }
+  function addCustomItem() {
+    setItems((current) =>
+      current.length >= 50
+        ? current
+        : [...current, { description: "", quantity: 1, unit_price: "" }],
     );
   }
   async function addCustomer(e) {
@@ -88,6 +96,10 @@ function NewInvoiceContent() {
     setError("");
     if (!selected) {
       setError("Choose a customer first.");
+      return;
+    }
+    if (!items.length) {
+      setError("Add at least one line item before creating the invoice.");
       return;
     }
     setBusy(true);
@@ -272,28 +284,37 @@ function NewInvoiceContent() {
                 <input name="due_at" type="date" required />
               </label>
               <h3 style={{ fontSize: 14, marginTop: 25 }}>Line items</h3>
+              <p className="helper">
+                Add saved listings, custom items, or both. Custom items only
+                appear on this invoice and do not change your catalogue.
+              </p>
               <label className="field">
-                Add a saved service or product
+                Add a saved service or product (optional)
                 <select
                   value=""
+                  disabled={items.length >= 50}
                   onChange={(event) => {
                     const product = products.data?.items.find(
                       (item) => item.id === event.target.value,
                     );
                     if (!product || product.price_on_request) return;
-                    setItems((current) => [
-                      ...current.filter(
-                        (item) => item.description || item.unit_price,
-                      ),
-                      {
-                        description: product.name,
-                        quantity: 1,
-                        unit_price: (product.price_minor / 100).toFixed(2),
-                      },
-                    ]);
+                    setItems((current) =>
+                      current.length >= 50
+                        ? current
+                        : [
+                            ...current,
+                            {
+                              description: product.name,
+                              quantity: 1,
+                              unit_price: (product.price_minor / 100).toFixed(
+                                2,
+                              ),
+                            },
+                          ],
+                    );
                   }}
                 >
-                  <option value="">Choose a priced listing</option>
+                  <option value="">Choose a priced listing to add</option>
                   {products.data?.items
                     .filter((item) => item.active && !item.price_on_request)
                     .map((item) => (
@@ -323,15 +344,35 @@ function NewInvoiceContent() {
                   </button>
                 </div>
               )}
+              <button
+                type="button"
+                className="button button-light small"
+                disabled={items.length >= 50}
+                onClick={addCustomItem}
+              >
+                + Add custom item
+              </button>
+              {!items.length && (
+                <p className="helper" role="status">
+                  No items yet. Choose a saved listing or add a custom item.
+                </p>
+              )}
               {items.map((item, index) => (
-                <div
-                  className="form-grid"
-                  key={index}
-                  style={{
-                    borderBottom: "1px solid #edf1e9",
-                    marginBottom: 13,
-                  }}
-                >
+                <div className="invoice-item-editor" key={index}>
+                  <div className="invoice-item-header">
+                    <strong>Item {index + 1}</strong>
+                    <button
+                      type="button"
+                      className="button button-ghost small"
+                      onClick={() =>
+                        setItems((current) =>
+                          current.filter((_, i) => i !== index),
+                        )
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
                   <label className="field">
                     Description
                     <input
@@ -374,34 +415,18 @@ function NewInvoiceContent() {
                       />
                     </label>
                   </div>
-                  {items.length > 1 && (
-                    <button
-                      type="button"
-                      className="button button-ghost small"
-                      onClick={() =>
-                        setItems((current) =>
-                          current.filter((_, i) => i !== index),
-                        )
-                      }
-                    >
-                      Remove item
-                    </button>
-                  )}
                 </div>
               ))}
-              <button
-                type="button"
-                className="button button-light small"
-                disabled={items.length >= 50}
-                onClick={() =>
-                  setItems((current) => [
-                    ...current,
-                    { description: "", quantity: 1, unit_price: "" },
-                  ])
-                }
-              >
-                + Add another item
-              </button>
+              {items.length > 0 && (
+                <button
+                  type="button"
+                  className="button button-light small"
+                  disabled={items.length >= 50}
+                  onClick={addCustomItem}
+                >
+                  + Add another custom item
+                </button>
+              )}
               <div className="form-grid" style={{ marginTop: 22 }}>
                 <label className="field">
                   Discount ({business.currency})

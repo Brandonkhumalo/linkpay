@@ -6,11 +6,15 @@ import { useRouter } from "next/navigation";
 import { api, errorMessage } from "../lib/api";
 import { Brand, Notice } from "./ui";
 
+const passwordRequirements =
+  "Use at least 5 characters with a lowercase letter, uppercase letter, number, and special character (maximum 72 bytes).";
+
 export default function AuthForm({ mode, token, initialPlan = "free" }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState(initialPlan);
   const titles = {
     login: "Welcome back",
@@ -23,14 +27,26 @@ export default function AuthForm({ mode, token, initialPlan = "free" }) {
     register:
       "Start on Free or try a paid package for exactly 168 hours. No payment details needed.",
     forgot: "Enter your email and we will send a 30-minute reset link.",
-    reset: "Use a password of at least 12 characters.",
+    reset: passwordRequirements,
   };
   async function submit(event) {
     event.preventDefault();
-    setBusy(true);
     setError("");
     setSuccess("");
     const fields = Object.fromEntries(new FormData(event.currentTarget));
+    if (
+      (mode === "register" || mode === "reset") &&
+      (Array.from(fields.password).length < 5 ||
+        new TextEncoder().encode(fields.password).length > 72 ||
+        !/[a-z]/.test(fields.password) ||
+        !/[A-Z]/.test(fields.password) ||
+        !/[0-9]/.test(fields.password) ||
+        !/[\p{P}\p{S}]/u.test(fields.password))
+    ) {
+      setError(passwordRequirements);
+      return;
+    }
+    setBusy(true);
     try {
       if (mode === "login") {
         await api("/auth/login", {
@@ -239,20 +255,38 @@ export default function AuthForm({ mode, token, initialPlan = "free" }) {
               {(mode === "login" ||
                 mode === "register" ||
                 mode === "reset") && (
-                <label className="field">
-                  Password
-                  <input
-                    name="password"
-                    type="password"
-                    required
-                    minLength={mode === "login" ? undefined : 12}
-                    maxLength={mode === "login" ? undefined : 72}
-                    autoComplete={
-                      mode === "login" ? "current-password" : "new-password"
-                    }
-                    placeholder="••••••••••••"
-                  />
-                </label>
+                <div className="field">
+                  <label htmlFor="auth-password">Password</label>
+                  <div className="password-input">
+                    <input
+                      id="auth-password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      required
+                      minLength={mode === "login" ? undefined : 5}
+                      maxLength={mode === "login" ? undefined : 72}
+                      autoComplete={
+                        mode === "login" ? "current-password" : "new-password"
+                      }
+                      placeholder="••••••••••••"
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      aria-controls="auth-password"
+                      aria-pressed={showPassword}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
+                    >
+                      {showPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                  {mode === "register" && (
+                    <span className="helper">{passwordRequirements}</span>
+                  )}
+                </div>
               )}
               {mode === "login" && (
                 <p style={{ textAlign: "right", fontSize: 12 }}>

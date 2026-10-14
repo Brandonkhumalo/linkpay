@@ -40,6 +40,7 @@ export default function WorkspaceLayout({ children }) {
           setWorkspace({
             me,
             business,
+            siteOrigin: window.location.origin,
             setBusiness: (business) =>
               setWorkspace((current) => ({ ...current, business })),
           });
@@ -79,6 +80,7 @@ export default function WorkspaceLayout({ children }) {
         <Loading />
       </div>
     );
+  const storefrontPath = `/store/${workspace.business.slug}`;
   return (
     <WorkspaceContext.Provider value={workspace}>
       <div className="app-shell">
@@ -130,16 +132,34 @@ export default function WorkspaceLayout({ children }) {
             <div className="sidebar-tip">
               <span className="tip-graphic">✦</span>
               <strong>Your link is your storefront</strong>
-              <p>Share it wherever your customers are.</p>
+              <p>
+                {workspace.business.published
+                  ? "Share it wherever your customers are."
+                  : "Publish your storefront to make this link available."}
+              </p>
               {workspace.business.published ? (
-                <Link
-                  href={`/store/${workspace.business.slug}`}
-                  target="_blank"
-                >
-                  View storefront <Icon name="external" size={15} />
-                </Link>
+                <>
+                  <Link
+                    className="sidebar-storefront-url"
+                    href={storefrontPath}
+                    target="_blank"
+                  >
+                    {workspace.siteOrigin}
+                    {storefrontPath}
+                  </Link>
+                  <Link href={storefrontPath} target="_blank">
+                    View storefront <Icon name="external" size={15} />
+                  </Link>
+                </>
               ) : (
-                <Link href="/app/storefront">Set up your shop →</Link>
+                <>
+                  <span className="sidebar-storefront-url">
+                    Reserved: {storefrontPath}
+                  </span>
+                  <Link href="/app/storefront" onClick={() => setMenu(false)}>
+                    Set up your shop →
+                  </Link>
+                </>
               )}
             </div>
             <button className="logout-button" onClick={logout}>

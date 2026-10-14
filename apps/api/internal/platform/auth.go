@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -14,6 +16,9 @@ import (
 )
 
 var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$`)
+
+const passwordRequirements = "Password must be at least 5 characters and include a lowercase letter, uppercase letter, number, and special character (maximum 72 bytes)"
+
 var dummyPasswordHash = func() []byte {
 	hash, err := bcrypt.GenerateFromPassword([]byte(randomHex(16)), bcrypt.DefaultCost)
 	if err != nil {
@@ -41,6 +46,19 @@ func validEmail(email string) bool {
 	parsed, err := mail.ParseAddress(email)
 	return err == nil && parsed.Address == email && !strings.ContainsAny(email, "<>\n\r")
 }
+func validNewPassword(password string) bool {
+	if utf8.RuneCountInString(password) < 5 || len(password) > 72 {
+		return false
+	}
+	var lower, upper, number, special bool
+	for _, char := range password {
+		lower = lower || char >= 'a' && char <= 'z'
+		upper = upper || char >= 'A' && char <= 'Z'
+		number = number || char >= '0' && char <= '9'
+		special = special || unicode.IsPunct(char) || unicode.IsSymbol(char)
+	}
+	return lower && upper && number && special
+}
 func (a *App) setSession(w http.ResponseWriter, r *http.Request, userID string) error {
 	token := randomHex(32)
 	_, err := a.DB.Exec(r.Context(), `INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '30 days')`, hash(token), userID)
@@ -64,8 +82,12 @@ func (a *App) register(w http.ResponseWriter, r *http.Request) {
 	if in.TrialPlan == "" {
 		in.TrialPlan = "free"
 	}
-	if !validEmail(in.Email) || len(in.Password) < 12 || len(in.Password) > 72 || len(in.BusinessName) < 2 || len(in.BusinessName) > 120 || !slugPattern.MatchString(in.Slug) {
-		fail(w, 400, "Provide a valid email, password of 12–72 characters, business name, and slug")
+	if !validEmail(in.Email) || len(in.BusinessName) < 2 || len(in.BusinessName) > 120 || !slugPattern.MatchString(in.Slug) {
+		fail(w, 400, "Provide a valid email, business name, and slug")
+		return
+	}
+	if !validNewPassword(in.Password) {
+		fail(w, 400, passwordRequirements)
 		return
 	}
 	if in.TrialPlan != "free" && in.TrialPlan != "starter" && in.TrialPlan != "business" {

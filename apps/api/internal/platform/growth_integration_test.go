@@ -99,7 +99,7 @@ func TestGrowthWorkflows(t *testing.T) {
 		return res.StatusCode, out, session
 	}
 	register := func(slug string) *http.Cookie {
-		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": slug + "@example.test", "password": "a-long-test-password", "business_name": slug, "slug": slug}, nil)
+		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": slug + "@example.test", "password": "A-long-test-password1!", "business_name": slug, "slug": slug}, nil)
 		if status != 201 || cookie == nil {
 			t.Fatalf("register %s: %d", slug, status)
 		}
