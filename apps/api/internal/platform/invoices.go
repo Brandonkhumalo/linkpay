@@ -21,34 +21,69 @@ type invoiceItem struct {
 	TotalMinor  int64  `json:"total_minor"`
 }
 type invoiceInput struct {
-	CustomerID    string        `json:"customer_id"`
-	DueAt         string        `json:"due_at"`
-	DiscountMinor int64         `json:"discount_minor"`
-	TaxMinor      int64         `json:"tax_minor"`
-	Notes         string        `json:"notes"`
-	Items         []invoiceItem `json:"items"`
+	CustomerID            string        `json:"customer_id"`
+	RecipientBusinessName string        `json:"recipient_business_name"`
+	RecipientEmail        string        `json:"recipient_email"`
+	RecipientPhone        string        `json:"recipient_phone"`
+	SenderPhone           string        `json:"sender_phone"`
+	DesignTemplate        string        `json:"design_template"`
+	DesignColor           string        `json:"design_color"`
+	ShowLogo              bool          `json:"show_logo"`
+	LogoID                string        `json:"-"`
+	LogoExt               string        `json:"-"`
+	LogoSize              int64         `json:"-"`
+	DueAt                 string        `json:"due_at"`
+	DiscountMinor         int64         `json:"discount_minor"`
+	TaxMinor              int64         `json:"tax_minor"`
+	Notes                 string        `json:"notes"`
+	Items                 []invoiceItem `json:"items"`
 }
 type invoiceView struct {
-	ID            string        `json:"id"`
-	Number        int64         `json:"number"`
-	CustomerName  string        `json:"customer_name"`
-	CustomerEmail string        `json:"customer_email"`
-	CustomerPhone string        `json:"customer_phone"`
-	Currency      string        `json:"currency"`
-	DueAt         string        `json:"due_at"`
-	IssuedAt      string        `json:"issued_at"`
-	Status        string        `json:"status"`
-	SubtotalMinor int64         `json:"subtotal_minor"`
-	DiscountMinor int64         `json:"discount_minor"`
-	TaxMinor      int64         `json:"tax_minor"`
-	TotalMinor    int64         `json:"total_minor"`
-	PaidMinor     int64         `json:"paid_minor"`
-	BalanceMinor  int64         `json:"balance_minor"`
-	Notes         string        `json:"notes"`
-	Items         []invoiceItem `json:"items,omitempty"`
+	ID                 string        `json:"id"`
+	Number             int64         `json:"number"`
+	CustomerName       string        `json:"customer_name"`
+	CustomerEmail      string        `json:"customer_email"`
+	CustomerPhone      string        `json:"customer_phone"`
+	SenderBusinessName string        `json:"sender_business_name"`
+	SenderPhone        string        `json:"sender_phone"`
+	DesignTemplate     string        `json:"design_template"`
+	DesignColor        string        `json:"design_color"`
+	ShowLogo           bool          `json:"show_logo"`
+	LogoID             string        `json:"-"`
+	LogoExt            string        `json:"-"`
+	Currency           string        `json:"currency"`
+	DueAt              string        `json:"due_at"`
+	IssuedAt           string        `json:"issued_at"`
+	Status             string        `json:"status"`
+	SubtotalMinor      int64         `json:"subtotal_minor"`
+	DiscountMinor      int64         `json:"discount_minor"`
+	TaxMinor           int64         `json:"tax_minor"`
+	TotalMinor         int64         `json:"total_minor"`
+	PaidMinor          int64         `json:"paid_minor"`
+	BalanceMinor       int64         `json:"balance_minor"`
+	Notes              string        `json:"notes"`
+	Items              []invoiceItem `json:"items,omitempty"`
 }
 
-const invoiceSelect = `SELECT i.id::text,i.number,c.name,c.email,c.phone,i.currency,i.due_at,i.issued_at,i.status,i.subtotal_minor,i.discount_minor,i.tax_minor,i.total_minor,COALESCE(p.paid,0),i.notes,(timezone(b.timezone,now())::date)::text FROM invoices i JOIN customers c ON c.id=i.customer_id AND c.business_id=i.business_id JOIN businesses b ON b.id=i.business_id LEFT JOIN LATERAL (SELECT sum(amount_minor) paid FROM payments WHERE invoice_id=i.id AND business_id=i.business_id) p ON true`
+func validInvoicePhone(phone string) bool {
+	if len(phone) < 7 || len(phone) > 40 {
+		return false
+	}
+	digits := 0
+	for index, char := range phone {
+		switch {
+		case char >= '0' && char <= '9':
+			digits++
+		case char == '+' && index == 0:
+		case char == ' ' || char == '-' || char == '(' || char == ')':
+		default:
+			return false
+		}
+	}
+	return digits >= 7
+}
+
+const invoiceSelect = `SELECT i.id::text,i.number,COALESCE(i.recipient_business_name,c.name),COALESCE(i.recipient_email,c.email),COALESCE(i.recipient_phone,c.phone),COALESCE(i.sender_business_name,b.name),COALESCE(i.sender_phone,b.whatsapp),i.design_template,i.design_color,i.show_logo,COALESCE(i.logo_id::text,''),COALESCE(i.logo_ext,''),i.currency,i.due_at,i.issued_at,i.status,i.subtotal_minor,i.discount_minor,i.tax_minor,i.total_minor,COALESCE(p.paid,0),i.notes,(timezone(b.timezone,now())::date)::text FROM invoices i JOIN customers c ON c.id=i.customer_id AND c.business_id=i.business_id JOIN businesses b ON b.id=i.business_id LEFT JOIN LATERAL (SELECT sum(amount_minor) paid FROM payments WHERE invoice_id=i.id AND business_id=i.business_id) p ON true`
 
 type scanner interface{ Scan(...any) error }
 
@@ -57,7 +92,7 @@ func scanInvoice(row scanner) (invoiceView, error) {
 	var issued *time.Time
 	var due time.Time
 	var rawStatus, today string
-	err := row.Scan(&v.ID, &v.Number, &v.CustomerName, &v.CustomerEmail, &v.CustomerPhone, &v.Currency, &due, &issued, &rawStatus, &v.SubtotalMinor, &v.DiscountMinor, &v.TaxMinor, &v.TotalMinor, &v.PaidMinor, &v.Notes, &today)
+	err := row.Scan(&v.ID, &v.Number, &v.CustomerName, &v.CustomerEmail, &v.CustomerPhone, &v.SenderBusinessName, &v.SenderPhone, &v.DesignTemplate, &v.DesignColor, &v.ShowLogo, &v.LogoID, &v.LogoExt, &v.Currency, &due, &issued, &rawStatus, &v.SubtotalMinor, &v.DiscountMinor, &v.TaxMinor, &v.TotalMinor, &v.PaidMinor, &v.Notes, &today)
 	if err != nil {
 		return v, err
 	}
@@ -116,6 +151,36 @@ func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &in) {
 		return
 	}
+	in.RecipientBusinessName = strings.TrimSpace(in.RecipientBusinessName)
+	in.RecipientEmail = strings.TrimSpace(in.RecipientEmail)
+	in.RecipientPhone = strings.TrimSpace(in.RecipientPhone)
+	in.SenderPhone = strings.TrimSpace(in.SenderPhone)
+	if in.DesignTemplate == "" {
+		in.DesignTemplate = "simple"
+	}
+	if in.DesignColor == "" {
+		in.DesignColor = "#235743"
+	}
+	if !validInvoiceDesign(in.DesignTemplate, in.DesignColor) {
+		fail(w, 400, "Choose a valid invoice template and color")
+		return
+	}
+	if len(in.RecipientBusinessName) < 2 || len(in.RecipientBusinessName) > 160 {
+		fail(w, 400, "Enter the recipient business name")
+		return
+	}
+	if in.RecipientEmail != "" && !validEmail(in.RecipientEmail) {
+		fail(w, 400, "Enter a valid recipient email address")
+		return
+	}
+	if in.RecipientPhone != "" && !validInvoicePhone(in.RecipientPhone) {
+		fail(w, 400, "Enter a valid recipient phone number")
+		return
+	}
+	if !validInvoicePhone(in.SenderPhone) {
+		fail(w, 400, "Enter a valid sender phone number")
+		return
+	}
 	due, err := time.Parse("2006-01-02", in.DueAt)
 	if err != nil || due.Before(time.Now().UTC().AddDate(0, 0, -1)) || len(in.Items) == 0 || len(in.Items) > 50 || len(in.Notes) > 2000 || in.DiscountMinor < 0 || in.TaxMinor < 0 {
 		fail(w, 400, "Invalid invoice details")
@@ -153,6 +218,10 @@ func (a *App) createInvoice(w http.ResponseWriter, r *http.Request) {
 	id, number, err := a.insertDraftInvoice(r.Context(), tx, who(r).BusinessID, who(r).UserID, in, "")
 	if errors.Is(err, errInvoiceQuota) {
 		fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
+		return
+	}
+	if errors.Is(err, errInvoiceLogoUnavailable) {
+		fail(w, 400, "Upload a business logo before adding it to the invoice")
 		return
 	}
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -458,7 +527,7 @@ func (a *App) publicInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 	v.CustomerEmail = "" // The bearer link does not expose contact details.
 	v.CustomerPhone = ""
-	writeJSON(w, 200, map[string]any{"invoice": v, "business": map[string]string{"name": b.Name, "email": b.Email, "whatsapp": b.Whatsapp, "payment_instructions": b.PaymentInstructions}})
+	writeJSON(w, 200, map[string]any{"invoice": v, "business": map[string]string{"name": v.SenderBusinessName, "phone": v.SenderPhone, "email": b.Email, "whatsapp": b.Whatsapp, "payment_instructions": b.PaymentInstructions}})
 }
 func money(n int64) string { return fmt.Sprintf("%d.%02d", n/100, n%100) }
 func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
@@ -478,40 +547,9 @@ func (a *App) invoicePDF(w http.ResponseWriter, r *http.Request) {
 	}
 	p := fpdf.New("P", "mm", "A4", "")
 	p.SetMargins(18, 18, 18)
+	p.SetAutoPageBreak(true, 18)
 	p.AddPage()
-	p.SetFont("Arial", "B", 20)
-	p.Cell(0, 12, b.Name)
-	p.Ln(18)
-	p.SetFont("Arial", "B", 16)
-	p.Cell(0, 10, fmt.Sprintf("INVOICE #%06d", v.Number))
-	p.Ln(12)
-	p.SetFont("Arial", "", 11)
-	p.Cell(0, 7, "Bill to: "+v.CustomerName)
-	p.Ln(7)
-	p.Cell(0, 7, "Due: "+v.DueAt+"    Status: "+strings.ToUpper(v.Status))
-	p.Ln(12)
-	p.SetFont("Arial", "B", 10)
-	p.CellFormat(110, 8, "Description", "B", 0, "L", false, 0, "")
-	p.CellFormat(25, 8, "Qty", "B", 0, "R", false, 0, "")
-	p.CellFormat(40, 8, "Total", "B", 1, "R", false, 0, "")
-	p.SetFont("Arial", "", 10)
-	for _, it := range v.Items {
-		p.CellFormat(110, 9, it.Description, "B", 0, "L", false, 0, "")
-		p.CellFormat(25, 9, fmt.Sprint(it.Quantity), "B", 0, "R", false, 0, "")
-		p.CellFormat(40, 9, v.Currency+" "+money(it.TotalMinor), "B", 1, "R", false, 0, "")
-	}
-	p.Ln(8)
-	for _, line := range []string{"Subtotal: " + v.Currency + " " + money(v.SubtotalMinor), "Discount: " + v.Currency + " " + money(v.DiscountMinor), "Tax: " + v.Currency + " " + money(v.TaxMinor), "Total: " + v.Currency + " " + money(v.TotalMinor), "Paid: " + v.Currency + " " + money(v.PaidMinor), "Balance: " + v.Currency + " " + money(v.BalanceMinor)} {
-		p.CellFormat(0, 8, line, "", 1, "R", false, 0, "")
-	}
-	if v.Notes != "" {
-		p.Ln(8)
-		p.MultiCell(0, 7, "Notes: "+v.Notes, "", "L", false)
-	}
-	if b.PaymentInstructions != "" {
-		p.Ln(8)
-		p.MultiCell(0, 7, "How to pay: "+b.PaymentInstructions, "", "L", false)
-	}
+	renderInvoicePDF(p, v, b.PaymentInstructions)
 	var buf bytes.Buffer
 	if err = p.Output(&buf); err != nil {
 		unavailable(w, r, err)

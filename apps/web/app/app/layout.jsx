@@ -7,6 +7,11 @@ import { api, errorMessage } from "../../lib/api";
 import { Brand, Icon, Loading } from "../../components/ui";
 
 const WorkspaceContext = createContext(null);
+const countLabels = {
+  "/app/activity": "unread updates",
+  "/app/enquiries": "new enquiries",
+  "/app/quotes": "accepted quotes awaiting an invoice",
+};
 export function useWorkspace() {
   return useContext(WorkspaceContext);
 }
@@ -32,6 +37,7 @@ export default function WorkspaceLayout({ children }) {
   const [workspace, setWorkspace] = useState(null);
   const [error, setError] = useState("");
   const [menu, setMenu] = useState(false);
+  const [counts, setCounts] = useState(null);
   useEffect(() => {
     let active = true;
     Promise.all([api("/me"), api("/businesses/current")])
@@ -55,6 +61,30 @@ export default function WorkspaceLayout({ children }) {
       active = false;
     };
   }, [router, pathname]);
+  useEffect(() => {
+    if (!workspace?.business?.id) return;
+    let active = true;
+    async function loadCounts() {
+      try {
+        const nextCounts = await api("/notifications/counts", {
+          cache: "no-store",
+        });
+        if (active) setCounts(nextCounts);
+      } catch {
+        // Keep the last known counts until the next poll.
+      }
+    }
+    loadCounts();
+    const timer = window.setInterval(loadCounts, 60_000);
+    window.addEventListener("focus", loadCounts);
+    window.addEventListener("linkpay:notifications-changed", loadCounts);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", loadCounts);
+      window.removeEventListener("linkpay:notifications-changed", loadCounts);
+    };
+  }, [workspace?.business?.id, pathname]);
   async function logout() {
     try {
       await api("/auth/logout", { method: "POST" });
@@ -107,23 +137,43 @@ export default function WorkspaceLayout({ children }) {
           </div>
           <span className="nav-caption">WORKSPACE</span>
           <nav className="side-nav" aria-label="Workspace">
-            {links.map(([href, label, icon]) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setMenu(false)}
-                className={
-                  pathname === href ||
-                  (href !== "/app" && pathname.startsWith(`${href}/`))
-                    ? "active"
-                    : ""
-                }
-              >
-                <Icon name={icon} size={19} />
-                {label}
-              </Link>
-            ))}
-            <Link href="/shops" onClick={() => setMenu(false)}>
+            {links.map(([href, label, icon]) => {
+              const count = counts?.[href.slice(5)];
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMenu(false)}
+                  className={
+                    pathname === href ||
+                    (href !== "/app" && pathname.startsWith(`${href}/`))
+                      ? "active"
+                      : ""
+                  }
+                >
+                  <Icon name={icon} size={19} />
+                  {label}
+                  {count > 0 && (
+                    <span
+                      className="side-nav-count"
+                      aria-label={`${count} ${countLabels[href]}`}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+            <Link
+              href="/app/shops"
+              onClick={() => setMenu(false)}
+              className={
+                pathname.startsWith("/app/shops") ||
+                pathname.startsWith("/app/store/")
+                  ? "active"
+                  : ""
+              }
+            >
               <Icon name="shop" size={19} />
               Explore shops
             </Link>
@@ -185,7 +235,10 @@ export default function WorkspaceLayout({ children }) {
             </button>
             <span className="topbar-crumb">
               Workspace <span>/</span>{" "}
-              {links.find(([href]) => href === pathname)?.[1] || "Details"}
+              {links.find(([href]) => href === pathname)?.[1] ||
+                (pathname.startsWith("/app/store/")
+                  ? "Explore shops"
+                  : "Details")}
             </span>
             <div className="topbar-right">
               <span className="status-dot" /> Storefront{" "}

@@ -23,6 +23,7 @@ export default function Activity() {
   async function markRead(id) {
     try {
       await api(`/notifications/${id}/read`, { method: "POST" });
+      window.dispatchEvent(new Event("linkpay:notifications-changed"));
       refresh((value) => value + 1);
     } catch (error) {
       setNotice(errorMessage(error));

@@ -497,6 +497,7 @@ export function Enquiries({ page }) {
         method: "PATCH",
         body: JSON.stringify({ stage }),
       });
+      window.dispatchEvent(new Event("linkpay:notifications-changed"));
       refresh((value) => value + 1);
     } catch (error) {
       setNotice(errorMessage(error));
@@ -520,6 +521,7 @@ export function Enquiries({ page }) {
       setQuoting(null);
       setQuoteLink(result.url);
       setNotice("Quote created. Share its private link with the customer.");
+      window.dispatchEvent(new Event("linkpay:notifications-changed"));
       refresh((value) => value + 1);
     } catch (error) {
       setNotice(errorMessage(error));

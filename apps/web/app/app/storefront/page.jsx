@@ -6,15 +6,53 @@ import { api, errorMessage } from "../../../lib/api";
 import { Badge, Icon, Notice, PageHeader } from "../../../components/ui";
 import { useWorkspace } from "../layout";
 import StorefrontShare from "../../../components/storefront-share";
+import StoreLogo from "../../../components/store-logo";
 
 export default function Storefront() {
   const { business, setBusiness } = useWorkspace();
   const [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
+    [logoBusy, setLogoBusy] = useState(false),
     [profileType, setProfileType] = useState(
       business.profile_type || "business",
     );
   const link = `/store/${business.slug}`;
+  async function uploadLogo(event) {
+    event.preventDefault();
+    setLogoBusy(true);
+    setNotice("");
+    try {
+      const form = event.currentTarget;
+      const result = await api("/storefront/logo", {
+        method: "POST",
+        body: new FormData(form),
+      });
+      setBusiness({
+        ...business,
+        has_logo: true,
+        logo_version: result.logo_version,
+      });
+      form.reset();
+      setNotice("Logo uploaded.");
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setLogoBusy(false);
+    }
+  }
+  async function removeLogo() {
+    setLogoBusy(true);
+    setNotice("");
+    try {
+      await api("/storefront/logo", { method: "DELETE" });
+      setBusiness({ ...business, has_logo: false, logo_version: "" });
+      setNotice("Logo removed.");
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setLogoBusy(false);
+    }
+  }
   async function save(e) {
     e.preventDefault();
     setBusy(true);
@@ -77,7 +115,10 @@ export default function Storefront() {
       <Notice
         message={notice}
         kind={
-          notice.includes("saved") || notice.includes("copied")
+          notice.includes("saved") ||
+          notice.includes("copied") ||
+          notice.includes("uploaded") ||
+          notice.includes("removed")
             ? "success"
             : "error"
         }
@@ -89,6 +130,45 @@ export default function Storefront() {
             <Badge>{business.published ? "active" : "draft"}</Badge>
           </div>
           <p>The details customers will see on your public page.</p>
+          <div className="storefront-logo-settings">
+            <StoreLogo
+              key={business.logo_version || "no-logo"}
+              name={business.name}
+              hasLogo={business.has_logo}
+              src={`/api/v1/storefront/logo?v=${business.logo_version}`}
+            />
+            <div>
+              <strong>Shop logo</strong>
+              <p className="helper">
+                Shown in the shop directory and on your public storefront. JPEG
+                or PNG, up to 3 MB.
+              </p>
+              <form onSubmit={uploadLogo} className="form-actions">
+                <input
+                  name="image"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  required
+                />
+                <button
+                  className="button button-light small"
+                  disabled={busy || logoBusy}
+                >
+                  {logoBusy ? "Please wait…" : "Upload logo"}
+                </button>
+              </form>
+              {business.has_logo && (
+                <button
+                  type="button"
+                  className="button button-ghost small"
+                  disabled={busy || logoBusy}
+                  onClick={removeLogo}
+                >
+                  Remove logo
+                </button>
+              )}
+            </div>
+          </div>
           <form onSubmit={save}>
             <label className="field">
               Profile type
@@ -277,7 +357,7 @@ export default function Storefront() {
               Published profiles appear in the public directory. Keep this off
               if you only use invoices.
             </p>
-            <button className="button button-dark" disabled={busy}>
+            <button className="button button-dark" disabled={busy || logoBusy}>
               {busy ? "Saving…" : "Save storefront"}
             </button>
           </form>

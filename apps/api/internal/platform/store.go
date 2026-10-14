@@ -27,6 +27,8 @@ type businessView struct {
 	Timezone             string   `json:"timezone"`
 	ThemeColor           string   `json:"theme_color"`
 	Published            bool     `json:"published"`
+	HasLogo              bool     `json:"has_logo"`
+	LogoVersion          string   `json:"logo_version"`
 	Plan                 string   `json:"plan"`
 	InstagramURL         string   `json:"instagram_url"`
 	FacebookURL          string   `json:"facebook_url"`
@@ -78,7 +80,7 @@ func validSocialURL(raw, domain string) bool {
 
 func (a *App) readBusiness(r *http.Request, id string) (businessView, error) {
 	var b businessView
-	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls,payment_instructions FROM businesses WHERE id=$1`, id).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs, &b.PaymentInstructions)
+	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,logo_id IS NOT NULL,COALESCE(logo_id::text,''),CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls,payment_instructions FROM businesses WHERE id=$1`, id).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.HasLogo, &b.LogoVersion, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs, &b.PaymentInstructions)
 	return b, err
 }
 func (a *App) business(w http.ResponseWriter, r *http.Request) {
@@ -366,6 +368,8 @@ type publicStoreSummary struct {
 	ProfileType     string `json:"profile_type"`
 	CreatorNiche    string `json:"creator_niche"`
 	CreatorLocation string `json:"creator_location"`
+	HasLogo         bool   `json:"has_logo"`
+	LogoVersion     string `json:"logo_version"`
 }
 
 func (a *App) publicStores(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +382,7 @@ func (a *App) publicStores(w http.ResponseWriter, r *http.Request) {
 		fail(w, 400, "Invalid profile type")
 		return
 	}
-	rows, err := a.DB.Query(r.Context(), `SELECT name,slug,description,whatsapp,theme_color,profile_type,creator_niche,creator_location FROM businesses WHERE published=true AND ($1='' OR profile_type=$1) ORDER BY name,id LIMIT $2 OFFSET $3`, profileType, listPageSize+1, (page-1)*listPageSize)
+	rows, err := a.DB.Query(r.Context(), `SELECT name,slug,description,whatsapp,theme_color,profile_type,creator_niche,creator_location,logo_id IS NOT NULL,COALESCE(logo_id::text,'') FROM businesses WHERE published=true AND ($1='' OR profile_type=$1) ORDER BY name,id LIMIT $2 OFFSET $3`, profileType, listPageSize+1, (page-1)*listPageSize)
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -387,7 +391,7 @@ func (a *App) publicStores(w http.ResponseWriter, r *http.Request) {
 	shops := []publicStoreSummary{}
 	for rows.Next() {
 		var shop publicStoreSummary
-		if err = rows.Scan(&shop.Name, &shop.Slug, &shop.Description, &shop.Whatsapp, &shop.ThemeColor, &shop.ProfileType, &shop.CreatorNiche, &shop.CreatorLocation); err != nil {
+		if err = rows.Scan(&shop.Name, &shop.Slug, &shop.Description, &shop.Whatsapp, &shop.ThemeColor, &shop.ProfileType, &shop.CreatorNiche, &shop.CreatorLocation, &shop.HasLogo, &shop.LogoVersion); err != nil {
 			unavailable(w, r, err)
 			return
 		}
@@ -403,7 +407,7 @@ func (a *App) publicStores(w http.ResponseWriter, r *http.Request) {
 func (a *App) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	var b businessView
-	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls FROM businesses WHERE slug=$1 AND published=true`, slug).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs)
+	err := a.DB.QueryRow(r.Context(), `SELECT id::text,name,slug,description,whatsapp,email,currency,timezone,theme_color,published,logo_id IS NOT NULL,COALESCE(logo_id::text,''),CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,instagram_url,facebook_url,tiktok_url,website_url,profile_type,creator_niche,creator_location,creator_portfolio_urls FROM businesses WHERE slug=$1 AND published=true`, slug).Scan(&b.ID, &b.Name, &b.Slug, &b.Description, &b.Whatsapp, &b.Email, &b.Currency, &b.Timezone, &b.ThemeColor, &b.Published, &b.HasLogo, &b.LogoVersion, &b.Plan, &b.InstagramURL, &b.FacebookURL, &b.TikTokURL, &b.WebsiteURL, &b.ProfileType, &b.CreatorNiche, &b.CreatorLocation, &b.CreatorPortfolioURLs)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			fail(w, 404, "Storefront not found")

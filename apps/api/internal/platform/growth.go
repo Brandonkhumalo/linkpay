@@ -289,6 +289,21 @@ func (a *App) notifications(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, paged(out, page))
 }
+
+func (a *App) notificationCounts(w http.ResponseWriter, r *http.Request) {
+	var activity, enquiries, quotes int64
+	err := a.DB.QueryRow(r.Context(), `SELECT
+		(SELECT count(*) FROM merchant_notifications WHERE business_id=$1 AND read_at IS NULL),
+		(SELECT count(*) FROM enquiries WHERE business_id=$1 AND stage='new'),
+		(SELECT count(*) FROM quotes WHERE business_id=$1 AND status='accepted' AND invoice_id IS NULL)`, who(r).BusinessID).Scan(&activity, &enquiries, &quotes)
+	if err != nil {
+		unavailable(w, r, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "private, no-store")
+	writeJSON(w, 200, map[string]int64{"activity": activity, "enquiries": enquiries, "quotes": quotes})
+}
+
 func (a *App) readNotification(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if !validID(id) {

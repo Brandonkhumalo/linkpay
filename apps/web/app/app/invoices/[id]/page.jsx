@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { api, date, errorMessage, money } from "../../../../lib/api";
+import { invoiceTemplates } from "../../../../lib/invoice-design";
 import {
   Badge,
   Loading,
@@ -195,18 +197,45 @@ export default function InvoiceDetail() {
         <Notice message={result.error} />
       ) : (
         <div className="page-columns">
-          <section className="panel">
-            <div className="public-invoice-top">
-              <div>
-                <span className="eyebrow">
-                  INVOICE #{String(i.number).padStart(6, "0")}
-                </span>
-                <h2>{i.customer_name}</h2>
-                <p>{i.customer_email || i.customer_phone}</p>
+          <section
+            className={`panel invoice-sheet invoice-sheet--${i.design_template}`}
+            style={{ "--invoice-accent": i.design_color }}
+          >
+            <div className="invoice-sheet-heading">
+              <div className="invoice-sheet-identity">
+                {i.show_logo && (
+                  <Image
+                    unoptimized
+                    width={76}
+                    height={76}
+                    className="invoice-detail-logo"
+                    src={`/api/v1/invoices/${encodeURIComponent(id)}/logo`}
+                    alt={`${i.sender_business_name} logo`}
+                  />
+                )}
+                <div>
+                  <span className="eyebrow">FROM</span>
+                  <strong>{i.sender_business_name}</strong>
+                  <small>{i.sender_phone}</small>
+                </div>
               </div>
-              <Badge>{i.status}</Badge>
+              <div className="invoice-sheet-title">
+                <span className="eyebrow">
+                  {invoiceTemplates.find((item) => item.id === i.design_template)
+                    ?.name}{" "}
+                  invoice
+                </span>
+                <h1>#{String(i.number).padStart(6, "0")}</h1>
+                <Badge>{i.status}</Badge>
+              </div>
             </div>
             <div className="public-invoice-meta">
+              <div>
+                <small>Billed to</small>
+                <strong>{i.customer_name}</strong>
+                {i.customer_email && <p>{i.customer_email}</p>}
+                {i.customer_phone && <p>{i.customer_phone}</p>}
+              </div>
               <div>
                 <small>Issued</small>
                 <strong>{date(i.issued_at)}</strong>

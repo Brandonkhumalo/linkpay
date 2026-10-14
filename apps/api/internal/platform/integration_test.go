@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"image"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -48,6 +51,7 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
 	t.Setenv("PUBLIC_TOKEN_SECRET", "test-secret-with-at-least-thirty-two-characters")
+	t.Setenv("MEDIA_DIR", t.TempDir())
 	a, err := New(ctx, u.String(), "http://linkpay.test")
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +108,26 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 			}
 		}
 		return res.StatusCode, data, session
+	}
+	logoStatus := func(method, path string, cookie *http.Cookie, body io.Reader, contentType string) int {
+		t.Helper()
+		req, err := http.NewRequest(method, server.URL+path, body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		req.Header.Set("Origin", a.PublicURL)
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
+		}
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		return res.StatusCode
 	}
 	register := func(email, slug, trialPlan string) *http.Cookie {
 		status, _, cookie := request("POST", "/api/v1/auth/register", map[string]any{"email": email, "password": "A-long-test-password1!", "business_name": slug, "slug": slug, "trial_plan": trialPlan}, nil)
@@ -166,6 +190,30 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if status != 200 || len(directory["items"].([]any)) != 0 {
 		t.Fatalf("draft storefront visible in directory: %d %v", status, directory)
 	}
+	var logoBody bytes.Buffer
+	logoForm := multipart.NewWriter(&logoBody)
+	logoPart, err := logoForm.CreateFormFile("image", "logo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = png.Encode(logoPart, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	if err = logoForm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if status = logoStatus("POST", "/api/v1/storefront/logo", aCookie, &logoBody, logoForm.FormDataContentType()); status != 200 {
+		t.Fatalf("upload logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/storefront/logo", aCookie, nil, ""); status != 200 {
+		t.Fatalf("private logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/storefront/logo", bCookie, nil, ""); status != 404 {
+		t.Fatalf("other tenant saw logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/public/stores/tenant-a/logo", nil, nil, ""); status != 404 {
+		t.Fatalf("draft logo was public: %d", status)
+	}
 	storeUpdate := map[string]any{"name": "Tenant A", "description": "A shop", "whatsapp": "", "email": "tenant-a@example.test", "currency": "USD", "timezone": "UTC", "theme_color": "#4f46e5", "published": true}
 	status, _, _ = request("PATCH", "/api/v1/storefront", storeUpdate, aCookie)
 	if status != 400 {
@@ -178,8 +226,17 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	}
 	status, directory, _ = request("GET", "/api/v1/public/stores", nil, nil)
 	shops := directory["items"].([]any)
-	if status != 200 || len(shops) != 1 || shops[0].(map[string]any)["slug"] != "tenant-a" || shops[0].(map[string]any)["whatsapp"] != "+263771234567" {
+	if status != 200 || len(shops) != 1 || shops[0].(map[string]any)["slug"] != "tenant-a" || shops[0].(map[string]any)["whatsapp"] != "+263771234567" || shops[0].(map[string]any)["has_logo"] != true || shops[0].(map[string]any)["logo_version"] == "" {
 		t.Fatalf("public directory: %d %v", status, directory)
+	}
+	if status = logoStatus("GET", "/api/v1/public/stores/tenant-a/logo", nil, nil, ""); status != 200 {
+		t.Fatalf("published logo: %d", status)
+	}
+	if status = logoStatus("DELETE", "/api/v1/storefront/logo", aCookie, nil, ""); status != 204 {
+		t.Fatalf("remove logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/public/stores/tenant-a/logo", nil, nil, ""); status != 404 {
+		t.Fatalf("removed logo was public: %d", status)
 	}
 	storeUpdate["profile_type"] = "creator"
 	storeUpdate["creator_niche"] = "Food"
@@ -265,7 +322,62 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if status != 201 {
 		t.Fatalf("create customer: %d", status)
 	}
-	input := map[string]any{"customer_id": customer["id"], "due_at": "2099-01-01", "discount_minor": 0, "tax_minor": 0, "notes": "", "items": []map[string]any{{"description": "Consulting", "quantity": 1, "unit_minor": 1000}}}
+	input := map[string]any{"customer_id": customer["id"], "recipient_business_name": "Recipient Ltd", "recipient_email": "", "recipient_phone": "", "sender_phone": "+263771234567", "due_at": "2099-01-01", "discount_minor": 0, "tax_minor": 0, "notes": "", "items": []map[string]any{{"description": "Consulting", "quantity": 1, "unit_minor": 1000}}}
+	input["design_template"] = "modern"
+	input["design_color"] = "#245b76"
+	input["show_logo"] = true
+	status, _, _ = request("POST", "/api/v1/invoices", input, aCookie)
+	if status != 400 {
+		t.Fatalf("invoice accepted missing logo: %d", status)
+	}
+	var invoiceLogoBody bytes.Buffer
+	invoiceLogoForm := multipart.NewWriter(&invoiceLogoBody)
+	invoiceLogoPart, err := invoiceLogoForm.CreateFormFile("image", "invoice-logo.png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = png.Encode(invoiceLogoPart, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+		t.Fatal(err)
+	}
+	if err = invoiceLogoForm.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if status = logoStatus("POST", "/api/v1/storefront/logo", aCookie, &invoiceLogoBody, invoiceLogoForm.FormDataContentType()); status != 200 {
+		t.Fatalf("invoice logo upload: %d", status)
+	}
+	badDesign := map[string]any{}
+	for key, value := range input {
+		badDesign[key] = value
+	}
+	badDesign["design_template"] = "untrusted"
+	status, _, _ = request("POST", "/api/v1/invoices", badDesign, aCookie)
+	if status != 400 {
+		t.Fatalf("invalid invoice template accepted: %d", status)
+	}
+	badDesign["design_template"] = "modern"
+	badDesign["design_color"] = "url(javascript:alert(1))"
+	status, _, _ = request("POST", "/api/v1/invoices", badDesign, aCookie)
+	if status != 400 {
+		t.Fatalf("invalid invoice color accepted: %d", status)
+	}
+	missingName := map[string]any{}
+	for key, value := range input {
+		missingName[key] = value
+	}
+	missingName["recipient_business_name"] = ""
+	status, _, _ = request("POST", "/api/v1/invoices", missingName, aCookie)
+	if status != 400 {
+		t.Fatalf("invoice without recipient business name accepted: %d", status)
+	}
+	badPhone := map[string]any{}
+	for key, value := range input {
+		badPhone[key] = value
+	}
+	badPhone["sender_phone"] = "invalid"
+	status, _, _ = request("POST", "/api/v1/invoices", badPhone, aCookie)
+	if status != 400 {
+		t.Fatalf("invoice without valid sender phone accepted: %d", status)
+	}
 	status, _, _ = request("POST", "/api/v1/invoices", input, bCookie)
 	if status != 400 {
 		t.Fatalf("cross-tenant customer accepted: %d", status)
@@ -275,13 +387,63 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 		t.Fatalf("create invoice: %d", status)
 	}
 	id := invoice["id"].(string)
+	status, invoiceDetail, _ := request("GET", "/api/v1/invoices/"+id, nil, aCookie)
+	if status != 200 || invoiceDetail["customer_name"] != "Recipient Ltd" || invoiceDetail["customer_email"] != "" || invoiceDetail["customer_phone"] != "" || invoiceDetail["sender_business_name"] != "Tenant A" || invoiceDetail["sender_phone"] != "+263771234567" || invoiceDetail["design_template"] != "modern" || invoiceDetail["design_color"] != "#245b76" || invoiceDetail["show_logo"] != true {
+		t.Fatalf("invoice party details: %d %v", status, invoiceDetail)
+	}
+	if status = logoStatus("GET", "/api/v1/invoices/"+id+"/logo", aCookie, nil, ""); status != 200 {
+		t.Fatalf("owner invoice logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/invoices/"+id+"/logo", bCookie, nil, ""); status != 404 {
+		t.Fatalf("other tenant saw invoice logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/public/invoices/"+a.invoiceToken(id)+"/logo", nil, nil, ""); status != 404 {
+		t.Fatalf("draft invoice logo was public: %d", status)
+	}
 	status, _, _ = request("GET", "/api/v1/invoices/"+id, nil, bCookie)
 	if status != 404 {
 		t.Fatalf("cross-tenant invoice exposed: %d", status)
 	}
-	status, _, _ = request("POST", "/api/v1/invoices/"+id+"/send", nil, aCookie)
+	status, issuedInvoice, _ := request("POST", "/api/v1/invoices/"+id+"/send", nil, aCookie)
 	if status != 200 {
 		t.Fatalf("send invoice: %d", status)
+	}
+	issuedURL, err := url.Parse(issuedInvoice["url"].(string))
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, publicInvoice, _ := request("GET", "/api/v1/public/invoices/"+strings.TrimPrefix(issuedURL.Path, "/invoice/"), nil, nil)
+	if status != 200 || publicInvoice["invoice"].(map[string]any)["customer_name"] != "Recipient Ltd" || publicInvoice["invoice"].(map[string]any)["customer_email"] != "" || publicInvoice["business"].(map[string]any)["name"] != "Tenant A" || publicInvoice["business"].(map[string]any)["phone"] != "+263771234567" {
+		t.Fatalf("public invoice parties: %d %v", status, publicInvoice)
+	}
+	if status = logoStatus("GET", "/api/v1/public/invoices/"+a.invoiceToken(id)+"/logo", nil, nil, ""); status != 200 {
+		t.Fatalf("public invoice logo: %d", status)
+	}
+	if status = logoStatus("DELETE", "/api/v1/storefront/logo", aCookie, nil, ""); status != 204 {
+		t.Fatalf("remove storefront logo: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/public/invoices/"+a.invoiceToken(id)+"/logo", nil, nil, ""); status != 200 {
+		t.Fatalf("invoice logo lost after storefront removal: %d", status)
+	}
+	if status = logoStatus("GET", "/api/v1/invoices/"+id+"/pdf", aCookie, nil, ""); status != 200 {
+		t.Fatalf("invoice PDF with retained logo: %d", status)
+	}
+	input["show_logo"] = false
+	if _, err = a.DB.Exec(ctx, `UPDATE customers SET name='Changed Recipient' WHERE id=$1`, customer["id"]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE businesses SET name='Changed Sender' WHERE slug='tenant-a'`); err != nil {
+		t.Fatal(err)
+	}
+	status, invoiceDetail, _ = request("GET", "/api/v1/invoices/"+id, nil, aCookie)
+	if status != 200 || invoiceDetail["customer_name"] != "Recipient Ltd" || invoiceDetail["sender_business_name"] != "Tenant A" {
+		t.Fatalf("invoice parties changed with profiles: %d %v", status, invoiceDetail)
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE customers SET name='Customer A' WHERE id=$1`, customer["id"]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = a.DB.Exec(ctx, `UPDATE businesses SET name='Tenant A' WHERE slug='tenant-a'`); err != nil {
+		t.Fatal(err)
 	}
 	payment := map[string]any{"amount_minor": 600, "method": "bank transfer", "reference": "T-1", "idempotency_key": "test-idempotency-key-1"}
 	status, _, _ = request("POST", "/api/v1/invoices/"+id+"/payments", payment, bCookie)
@@ -445,9 +607,15 @@ func TestTenantIsolationAndPaymentBoundary(t *testing.T) {
 	if status != 200 || subscription["invoice_topup_balance"] != float64(30) {
 		t.Fatalf("top-up not credited once: %d %v", status, subscription)
 	}
+	input["recipient_email"] = "accounts@recipient.test"
+	input["recipient_phone"] = "+263 77 123 4567"
 	status, topupInvoice, _ := request("POST", "/api/v1/invoices", input, aCookie)
 	if status != 201 {
 		t.Fatalf("invoice with top-up: %d", status)
+	}
+	status, topupDetail, _ := request("GET", "/api/v1/invoices/"+topupInvoice["id"].(string), nil, aCookie)
+	if status != 200 || topupDetail["customer_email"] != "accounts@recipient.test" || topupDetail["customer_phone"] != "+263 77 123 4567" {
+		t.Fatalf("optional recipient contacts: %d %v", status, topupDetail)
 	}
 	var quotaSource string
 	if err = a.DB.QueryRow(ctx, `SELECT quota_source FROM invoices WHERE id=$1`, topupInvoice["id"]).Scan(&quotaSource); err != nil || quotaSource != "invoice_topup" {

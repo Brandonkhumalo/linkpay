@@ -107,8 +107,19 @@ func TestGrowthWorkflows(t *testing.T) {
 	}
 	owner := register("growth-owner")
 	other := register("growth-other")
+	expectCounts := func(cookie *http.Cookie, wantActivity, wantEnquiries, wantQuotes float64) {
+		t.Helper()
+		status, counts, _ := request("GET", "/api/v1/notifications/counts", nil, cookie)
+		if status != 200 || counts["activity"] != wantActivity || counts["enquiries"] != wantEnquiries || counts["quotes"] != wantQuotes {
+			t.Fatalf("notification counts: %d %v; want activity=%v enquiries=%v quotes=%v", status, counts, wantActivity, wantEnquiries, wantQuotes)
+		}
+	}
+	status, _, _ := request("GET", "/api/v1/notifications/counts", nil, nil)
+	if status != 401 {
+		t.Fatalf("anonymous notification counts: %d", status)
+	}
 	store := map[string]any{"name": "Growth Owner", "description": "Services", "whatsapp": "+263771234567", "email": "growth-owner@example.test", "currency": "USD", "timezone": "UTC", "theme_color": "#4f46e5", "published": true, "payment_instructions": "Pay by bank transfer using the invoice number"}
-	status, _, _ := request("PATCH", "/api/v1/storefront", store, owner)
+	status, _, _ = request("PATCH", "/api/v1/storefront", store, owner)
 	if status != 200 {
 		t.Fatalf("publish: %d", status)
 	}
@@ -116,6 +127,8 @@ func TestGrowthWorkflows(t *testing.T) {
 	if status != 201 {
 		t.Fatalf("enquiry: %d", status)
 	}
+	expectCounts(owner, 1, 1, 0)
+	expectCounts(other, 0, 0, 0)
 	status, inbox, _ := request("GET", "/api/v1/enquiries", nil, owner)
 	if status != 200 {
 		t.Fatalf("inbox: %d", status)
@@ -129,6 +142,7 @@ func TestGrowthWorkflows(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("update stage: %d", status)
 	}
+	expectCounts(owner, 1, 0, 0)
 	expires := time.Now().UTC().AddDate(0, 0, 14).Format("2006-01-02")
 	status, created, _ := request("POST", "/api/v1/quotes", map[string]any{"enquiry_id": enquiryID, "description": "Two consultation sessions", "amount_minor": 25000, "expires_at": expires}, owner)
 	if status != 201 {
@@ -157,6 +171,8 @@ func TestGrowthWorkflows(t *testing.T) {
 	if status != 200 {
 		t.Fatalf("accept quote: %d", status)
 	}
+	expectCounts(owner, 2, 0, 1)
+	expectCounts(other, 0, 0, 0)
 	status, _, _ = request("POST", "/api/v1/public/quotes/"+token+"/respond", map[string]any{"decision": "declined"}, nil)
 	if status != 409 {
 		t.Fatalf("accepted quote reversed: %d", status)
@@ -169,6 +185,21 @@ func TestGrowthWorkflows(t *testing.T) {
 	if status != 201 {
 		t.Fatalf("convert quote: %d %v", status, converted)
 	}
+	status, convertedDetail, _ := request("GET", "/api/v1/invoices/"+converted["id"].(string), nil, owner)
+	if status != 200 || convertedDetail["customer_name"] != "Client" || convertedDetail["customer_email"] != "client@example.test" || convertedDetail["sender_business_name"] != "Growth Owner" || convertedDetail["sender_phone"] != "+263771234567" {
+		t.Fatalf("converted quote invoice parties: %d %v", status, convertedDetail)
+	}
+	expectCounts(owner, 2, 0, 0)
+	status, activity, _ := request("GET", "/api/v1/notifications", nil, owner)
+	if status != 200 || len(activity["items"].([]any)) != 2 {
+		t.Fatalf("owner activity: %d %v", status, activity)
+	}
+	notificationID := activity["items"].([]any)[0].(map[string]any)["id"].(string)
+	status, _, _ = request("POST", "/api/v1/notifications/"+notificationID+"/read", nil, owner)
+	if status != 204 {
+		t.Fatalf("mark notification read: %d", status)
+	}
+	expectCounts(owner, 1, 0, 0)
 	invoiceID := converted["id"].(string)
 	status, _, _ = request("POST", "/api/v1/quotes/"+quoteID+"/convert", nil, owner)
 	if status != 409 {

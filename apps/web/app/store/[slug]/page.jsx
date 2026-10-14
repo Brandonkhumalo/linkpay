@@ -2,6 +2,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Brand, Icon } from "../../../components/ui";
 import PublicEnquiry from "../../../components/public-enquiry";
+import StoreLogo from "../../../components/store-logo";
 import { money } from "../../../lib/api";
 import { publicApi } from "../../../lib/server-api";
 
@@ -15,7 +16,7 @@ export async function generateMetadata({ params }) {
     description: business.description || `Explore ${business.name} on LinkPay.`,
   };
 }
-export default async function StorePage({ params }) {
+export default async function StorePage({ params, workspace = false }) {
   const { slug } = await params;
   const { business, products } = await publicApi(
     `/public/stores/${encodeURIComponent(slug)}`,
@@ -26,17 +27,31 @@ export default async function StorePage({ params }) {
     ["TikTok", business.tiktok_url],
     ["Website", business.website_url],
   ].filter(([, url]) => url);
+  const Container = workspace ? "div" : "main";
   return (
     <>
-      <header className="public-header">
-        <Brand />
-        <Link href="/shops">Explore shops ↗</Link>
-      </header>
-      <main className="public-store">
+      {!workspace && (
+        <header className="public-header">
+          <Brand />
+          <Link href="/shops">Explore shops ↗</Link>
+        </header>
+      )}
+      <Container className="public-store">
+        {workspace && (
+          <Link className="text-link" href="/app/shops">
+            ← Explore shops
+          </Link>
+        )}
         <section
           className="store-banner"
           style={{ backgroundColor: `${business.theme_color}22` }}
         >
+          <StoreLogo
+            name={business.name}
+            hasLogo={business.has_logo}
+            src={`/api/v1/public/stores/${encodeURIComponent(slug)}/logo?v=${business.logo_version}`}
+            className="storefront-logo"
+          />
           <span className="eyebrow">
             {business.profile_type === "creator"
               ? "CREATOR PROFILE"
@@ -165,11 +180,13 @@ export default async function StorePage({ params }) {
             <p>New listings will appear here shortly.</p>
           </div>
         )}
-      </main>
-      <footer className="site-footer">
-        <Brand />
-        <span>{business.name} on LinkPay</span>
-      </footer>
+      </Container>
+      {!workspace && (
+        <footer className="site-footer">
+          <Brand />
+          <span>{business.name} on LinkPay</span>
+        </footer>
+      )}
     </>
   );
 }

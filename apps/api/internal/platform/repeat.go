@@ -11,12 +11,31 @@ import (
 )
 
 var errInvoiceQuota = errors.New("invoice quota exhausted")
+var errInvoiceSenderPhone = errors.New("invoice sender phone is missing or invalid")
+var errInvoiceLogoUnavailable = errors.New("invoice logo is unavailable")
 
 func (a *App) insertDraftInvoice(ctx context.Context, tx pgx.Tx, businessID, actorID string, in invoiceInput, sourceQuoteID string) (string, int64, error) {
-	var plan, currency string
+	var plan, currency, senderBusinessName, profilePhone, businessColor string
+	var currentLogoID, currentLogoExt *string
+	var currentLogoSize int64
 	var number int64
-	if err := tx.QueryRow(ctx, `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,currency,next_invoice_number FROM businesses WHERE id=$1 FOR UPDATE`, businessID).Scan(&plan, &currency, &number); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT CASE WHEN plan_expires_at>now() THEN plan ELSE 'free' END,currency,next_invoice_number,name,whatsapp,theme_color,logo_id::text,logo_ext,logo_size FROM businesses WHERE id=$1 FOR UPDATE`, businessID).Scan(&plan, &currency, &number, &senderBusinessName, &profilePhone, &businessColor, &currentLogoID, &currentLogoExt, &currentLogoSize); err != nil {
 		return "", 0, err
+	}
+	if in.DesignTemplate == "" {
+		in.DesignTemplate = "simple"
+	}
+	if in.DesignColor == "" {
+		in.DesignColor = businessColor
+	}
+	if !validInvoiceDesign(in.DesignTemplate, in.DesignColor) {
+		return "", 0, errors.New("invalid invoice design")
+	}
+	if in.ShowLogo && in.LogoID == "" {
+		if currentLogoID == nil || currentLogoExt == nil {
+			return "", 0, errInvoiceLogoUnavailable
+		}
+		in.LogoID, in.LogoExt, in.LogoSize = *currentLogoID, *currentLogoExt, currentLogoSize
 	}
 	monthly, topups, err := invoiceQuota(ctx, tx, businessID)
 	if err != nil {
@@ -29,12 +48,18 @@ func (a *App) insertDraftInvoice(ctx context.Context, tx pgx.Tx, businessID, act
 		}
 		quotaSource = "invoice_topup"
 	}
-	var customerExists bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM customers WHERE id=$1 AND business_id=$2)`, in.CustomerID, businessID).Scan(&customerExists); err != nil {
+	var customerName string
+	if err = tx.QueryRow(ctx, `SELECT name FROM customers WHERE id=$1 AND business_id=$2`, in.CustomerID, businessID).Scan(&customerName); err != nil {
 		return "", 0, err
 	}
-	if !customerExists {
-		return "", 0, pgx.ErrNoRows
+	if in.RecipientBusinessName == "" {
+		in.RecipientBusinessName = customerName
+	}
+	if in.SenderPhone == "" {
+		in.SenderPhone = profilePhone
+	}
+	if !validInvoicePhone(in.SenderPhone) {
+		return "", 0, errInvoiceSenderPhone
 	}
 	var subtotal int64
 	for i := range in.Items {
@@ -46,7 +71,11 @@ func (a *App) insertDraftInvoice(ctx context.Context, tx pgx.Tx, businessID, act
 		source = sourceQuoteID
 	}
 	id := newID()
-	_, err = tx.Exec(ctx, `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,discount_minor,tax_minor,total_minor,notes,quota_source,source_quote_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, id, businessID, in.CustomerID, number, currency, in.DueAt, subtotal, in.DiscountMinor, in.TaxMinor, subtotal-in.DiscountMinor+in.TaxMinor, in.Notes, quotaSource, source)
+	var logoID, logoExt any
+	if in.ShowLogo {
+		logoID, logoExt = in.LogoID, in.LogoExt
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO invoices(id,business_id,customer_id,number,currency,due_at,subtotal_minor,discount_minor,tax_minor,total_minor,notes,quota_source,source_quote_id,recipient_business_name,recipient_email,recipient_phone,sender_business_name,sender_phone,design_template,design_color,show_logo,logo_id,logo_ext,logo_size) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`, id, businessID, in.CustomerID, number, currency, in.DueAt, subtotal, in.DiscountMinor, in.TaxMinor, subtotal-in.DiscountMinor+in.TaxMinor, in.Notes, quotaSource, source, in.RecipientBusinessName, in.RecipientEmail, in.RecipientPhone, senderBusinessName, in.SenderPhone, in.DesignTemplate, in.DesignColor, in.ShowLogo, logoID, logoExt, in.LogoSize)
 	if err != nil {
 		return "", 0, err
 	}
@@ -70,7 +99,7 @@ func (a *App) insertDraftInvoice(ctx context.Context, tx pgx.Tx, businessID, act
 
 func loadTemplate(ctx context.Context, tx pgx.Tx, businessID, invoiceID string) (invoiceInput, error) {
 	var in invoiceInput
-	err := tx.QueryRow(ctx, `SELECT customer_id::text,notes,discount_minor,tax_minor FROM invoices WHERE id=$1 AND business_id=$2 AND status!='void'`, invoiceID, businessID).Scan(&in.CustomerID, &in.Notes, &in.DiscountMinor, &in.TaxMinor)
+	err := tx.QueryRow(ctx, `SELECT i.customer_id::text,i.notes,i.discount_minor,i.tax_minor,COALESCE(i.recipient_business_name,c.name),COALESCE(i.recipient_email,c.email),COALESCE(i.recipient_phone,c.phone),COALESCE(i.sender_phone,b.whatsapp),i.design_template,i.design_color,i.show_logo,COALESCE(i.logo_id::text,''),COALESCE(i.logo_ext,''),i.logo_size FROM invoices i JOIN customers c ON c.id=i.customer_id AND c.business_id=i.business_id JOIN businesses b ON b.id=i.business_id WHERE i.id=$1 AND i.business_id=$2 AND i.status!='void'`, invoiceID, businessID).Scan(&in.CustomerID, &in.Notes, &in.DiscountMinor, &in.TaxMinor, &in.RecipientBusinessName, &in.RecipientEmail, &in.RecipientPhone, &in.SenderPhone, &in.DesignTemplate, &in.DesignColor, &in.ShowLogo, &in.LogoID, &in.LogoExt, &in.LogoSize)
 	if err != nil {
 		return in, err
 	}
@@ -127,6 +156,10 @@ func (a *App) duplicateInvoice(w http.ResponseWriter, r *http.Request) {
 		fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
 		return
 	}
+	if errors.Is(err, errInvoiceSenderPhone) {
+		fail(w, 400, "Add an international sender phone number in your storefront settings before duplicating this invoice")
+		return
+	}
 	if err != nil {
 		unavailable(w, r, err)
 		return
@@ -166,7 +199,7 @@ func (a *App) convertQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var name, email, phone string
-	if err = tx.QueryRow(r.Context(), `SELECT name,email,phone FROM enquiries WHERE id=$1 AND business_id=$2`, enquiryID, who(r).BusinessID).Scan(&name, &email, &phone); err != nil {
+	if err = tx.QueryRow(r.Context(), `SELECT COALESCE(NULLIF(brand_name,''),name),email,phone FROM enquiries WHERE id=$1 AND business_id=$2`, enquiryID, who(r).BusinessID).Scan(&name, &email, &phone); err != nil {
 		unavailable(w, r, err)
 		return
 	}
@@ -194,10 +227,14 @@ func (a *App) convertQuote(w http.ResponseWriter, r *http.Request) {
 		unavailable(w, r, err)
 		return
 	}
-	in := invoiceInput{CustomerID: customerID, DueAt: time.Now().In(location).AddDate(0, 0, 14).Format("2006-01-02"), Notes: description, Items: []invoiceItem{{Description: string(summary), Quantity: 1, UnitMinor: amount}}}
+	in := invoiceInput{CustomerID: customerID, RecipientBusinessName: name, RecipientEmail: email, RecipientPhone: phone, DueAt: time.Now().In(location).AddDate(0, 0, 14).Format("2006-01-02"), Notes: description, Items: []invoiceItem{{Description: string(summary), Quantity: 1, UnitMinor: amount}}}
 	invoiceID, number, err := a.insertDraftInvoice(r.Context(), tx, who(r).BusinessID, who(r).UserID, in, id)
 	if errors.Is(err, errInvoiceQuota) {
 		fail(w, 403, "Monthly invoice limit reached. Buy an invoice top-up to continue.")
+		return
+	}
+	if errors.Is(err, errInvoiceSenderPhone) {
+		fail(w, 400, "Add an international sender phone number in your storefront settings before converting this quote")
 		return
 	}
 	if err != nil {
@@ -361,6 +398,14 @@ func (a *App) RunRecurringDrafts(ctx context.Context) error {
 				return err
 			}
 			return nil
+		}
+		if errors.Is(err, errInvoiceSenderPhone) {
+			_, err = tx.Exec(ctx, `UPDATE invoice_schedules SET last_error='Add an international phone number to your storefront before generating the next invoice' WHERE id=$1`, scheduleID)
+			if err != nil {
+				tx.Rollback(ctx)
+				return err
+			}
+			return tx.Commit(ctx)
 		}
 		if err != nil {
 			tx.Rollback(ctx)

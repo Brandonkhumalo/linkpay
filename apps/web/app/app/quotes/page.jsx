@@ -22,6 +22,7 @@ export default function Quotes() {
   async function convert(id) {
     try {
       const invoice = await api(`/quotes/${id}/convert`, { method: "POST" });
+      window.dispatchEvent(new Event("linkpay:notifications-changed"));
       router.push(`/app/invoices/${invoice.id}`);
     } catch (error) {
       setNotice(errorMessage(error));

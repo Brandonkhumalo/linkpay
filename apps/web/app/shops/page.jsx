@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Brand, Icon } from "../../components/ui";
+import StoreLogo from "../../components/store-logo";
 import { publicApi } from "../../lib/server-api";
 
 export const metadata = {
@@ -8,7 +9,7 @@ export const metadata = {
   description: "Browse businesses and creators on LinkPay.",
 };
 
-export default async function ShopsPage({ searchParams }) {
+export default async function ShopsPage({ searchParams, workspace = false }) {
   const { page: rawPage, type: rawType } = await searchParams;
   const type = rawType || "";
   const page = rawPage === undefined ? 1 : Number(rawPage);
@@ -22,15 +23,19 @@ export default async function ShopsPage({ searchParams }) {
     notFound();
   }
   const directory = await publicApi(`/public/stores?page=${page}&type=${type}`);
+  const directoryPath = workspace ? "/app/shops" : "/shops";
   const pageHref = (nextPage) =>
-    `/shops?page=${nextPage}${type ? `&type=${type}` : ""}`;
+    `${directoryPath}?page=${nextPage}${type ? `&type=${type}` : ""}`;
+  const Container = workspace ? "div" : "main";
   return (
     <>
-      <header className="public-header">
-        <Brand />
-        <Link href="/register">Create your profile ↗</Link>
-      </header>
-      <main className="public-store shop-directory">
+      {!workspace && (
+        <header className="public-header">
+          <Brand />
+          <Link href="/register">Create your profile ↗</Link>
+        </header>
+      )}
+      <Container className="public-store shop-directory">
         <section className="store-banner directory-banner">
           <span className="eyebrow">THE LINKPAY DIRECTORY</span>
           <h1>Explore shops and creators.</h1>
@@ -47,9 +52,9 @@ export default async function ShopsPage({ searchParams }) {
           aria-label="Profile types"
           style={{ marginTop: 24 }}
         >
-          <Link href="/shops">All profiles</Link>
-          <Link href="/shops?type=business">Shops</Link>
-          <Link href="/shops?type=creator">Creators</Link>
+          <Link href={directoryPath}>All profiles</Link>
+          <Link href={`${directoryPath}?type=business`}>Shops</Link>
+          <Link href={`${directoryPath}?type=creator`}>Creators</Link>
         </nav>
         <div className="store-list-title">
           <div>
@@ -72,7 +77,11 @@ export default async function ShopsPage({ searchParams }) {
                   className="directory-card-art"
                   style={{ backgroundColor: `${shop.theme_color}22` }}
                 >
-                  <span>{shop.name.slice(0, 1).toUpperCase()}</span>
+                  <StoreLogo
+                    name={shop.name}
+                    hasLogo={shop.has_logo}
+                    src={`/api/v1/public/stores/${encodeURIComponent(shop.slug)}/logo?v=${shop.logo_version}`}
+                  />
                 </div>
                 <div className="store-item-body">
                   <span className="eyebrow">
@@ -95,7 +104,7 @@ export default async function ShopsPage({ searchParams }) {
                   <div className="store-item-actions">
                     <Link
                       className="button button-dark small"
-                      href={`/store/${shop.slug}`}
+                      href={`${workspace ? "/app" : ""}/store/${shop.slug}`}
                     >
                       {shop.profile_type === "creator"
                         ? "View creator"
@@ -124,8 +133,11 @@ export default async function ShopsPage({ searchParams }) {
               {page === 1 ? "No profiles yet" : "No profiles on this page"}
             </h3>
             <p>Check back soon or create your own storefront.</p>
-            <Link className="button button-dark" href="/register">
-              Get started
+            <Link
+              className="button button-dark"
+              href={workspace ? "/app/storefront" : "/register"}
+            >
+              {workspace ? "Set up your shop" : "Get started"}
             </Link>
           </div>
         )}
@@ -146,12 +158,14 @@ export default async function ShopsPage({ searchParams }) {
             <span />
           )}
         </nav>
-      </main>
-      <footer className="site-footer">
-        <Brand />
-        <span>Discover businesses and creators on LinkPay.</span>
-        <Link href="/">Home</Link>
-      </footer>
+      </Container>
+      {!workspace && (
+        <footer className="site-footer">
+          <Brand />
+          <span>Discover businesses and creators on LinkPay.</span>
+          <Link href="/">Home</Link>
+        </footer>
+      )}
     </>
   );
 }

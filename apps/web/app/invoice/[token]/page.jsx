@@ -1,8 +1,10 @@
 import Link from "next/link";
+import Image from "next/image";
 import { Brand, Badge } from "../../../components/ui";
 import { date, money } from "../../../lib/api";
 import { publicApi } from "../../../lib/server-api";
 import PaymentClaim from "../../../components/payment-claim";
+import { invoiceTemplates } from "../../../lib/invoice-design";
 
 export const metadata = {
   title: "View invoice",
@@ -20,17 +22,45 @@ export default async function InvoicePage({ params }) {
         <span className="helper">Private invoice link</span>
       </header>
       <main className="invoice-public">
-        <section className="panel" style={{ padding: 30 }}>
-          <div className="public-invoice-top">
-            <div>
+        <section
+          className={`panel invoice-sheet invoice-sheet--${i.design_template}`}
+          style={{ "--invoice-accent": i.design_color }}
+        >
+          <div className="invoice-sheet-heading">
+            <div className="invoice-sheet-identity">
+              {i.show_logo && (
+                <Image
+                  unoptimized
+                  width={76}
+                  height={76}
+                  src={`/api/v1/public/invoices/${encodeURIComponent(token)}/logo`}
+                  alt={`${b.name} logo`}
+                />
+              )}
+              <div>
+                <span className="eyebrow">FROM</span>
+                <strong>{b.name}</strong>
+                <small>{b.phone}</small>
+              </div>
+            </div>
+            <div className="invoice-sheet-title">
               <span className="eyebrow">
-                INVOICE FROM {b.name.toUpperCase()}
+                {
+                  invoiceTemplates.find((item) => item.id === i.design_template)
+                    ?.name
+                }{" "}
+                invoice
               </span>
               <h1>#{String(i.number).padStart(6, "0")}</h1>
+              <Badge>{i.status}</Badge>
             </div>
-            <Badge>{i.status}</Badge>
           </div>
           <div className="public-invoice-meta">
+            <div>
+              <small>From</small>
+              <strong>{b.name}</strong>
+              {b.phone && <p>{b.phone}</p>}
+            </div>
             <div>
               <small>Billed to</small>
               <strong>{i.customer_name}</strong>

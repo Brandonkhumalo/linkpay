@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { api, errorMessage, money } from "../../../../lib/api";
+import { invoiceTemplates } from "../../../../lib/invoice-design";
 import {
   Loading,
   Notice,
@@ -20,6 +21,12 @@ function NewInvoiceContent() {
   const [customerPage, setCustomerPage] = useState(1),
     [productPage, setProductPage] = useState(1),
     [selected, setSelected] = useState(null),
+    [recipientName, setRecipientName] = useState(""),
+    [recipientEmail, setRecipientEmail] = useState(""),
+    [recipientPhone, setRecipientPhone] = useState(""),
+    [designTemplate, setDesignTemplate] = useState("simple"),
+    [designColor, setDesignColor] = useState(business.theme_color || "#235743"),
+    [showLogo, setShowLogo] = useState(false),
     [creatingCustomer, setCreatingCustomer] = useState(false),
     [items, setItems] = useState([]),
     [error, setError] = useState(""),
@@ -73,6 +80,12 @@ function NewInvoiceContent() {
         : [...current, { description: "", quantity: 1, unit_price: "" }],
     );
   }
+  function selectCustomer(customer) {
+    setSelected(customer);
+    setRecipientName(customer.name);
+    setRecipientEmail(customer.email || "");
+    setRecipientPhone(customer.phone || "");
+  }
   async function addCustomer(e) {
     e.preventDefault();
     setBusy(true);
@@ -83,7 +96,7 @@ function NewInvoiceContent() {
         method: "POST",
         body: JSON.stringify(data),
       });
-      setSelected(created);
+      selectCustomer(created);
       setCreatingCustomer(false);
     } catch (e) {
       setError(errorMessage(e));
@@ -109,6 +122,13 @@ function NewInvoiceContent() {
         method: "POST",
         body: JSON.stringify({
           customer_id: selected.id,
+          recipient_business_name: recipientName.trim(),
+          recipient_email: recipientEmail.trim(),
+          recipient_phone: recipientPhone.trim(),
+          sender_phone: String(data.get("sender_phone")).trim(),
+          design_template: designTemplate,
+          design_color: designColor,
+          show_logo: showLogo && business.has_logo,
           due_at: data.get("due_at"),
           discount_minor: Math.round(Number(data.get("discount")) * 100),
           tax_minor: Math.round(Number(data.get("tax")) * 100),
@@ -167,7 +187,7 @@ function NewInvoiceContent() {
         <div className="stack">
           <section className="panel">
             <div className="panel-head">
-              <h2>1. Choose customer</h2>
+              <h2>1. Choose recipient</h2>
               <button
                 className="button button-light small"
                 onClick={() => setCreatingCustomer(!creatingCustomer)}
@@ -177,33 +197,39 @@ function NewInvoiceContent() {
             </div>
             {selected && (
               <div className="notice notice-success">
-                Selected: <strong>{selected.name}</strong> ·{" "}
-                {selected.email || selected.phone}
+                Selected: <strong>{selected.name}</strong>
               </div>
             )}
             {creatingCustomer ? (
               <form onSubmit={addCustomer}>
                 <label className="field">
-                  Name
+                  Recipient business name
                   <input
                     name="name"
                     required
                     minLength={2}
+                    maxLength={160}
                     defaultValue={source?.brand_name || source?.name || ""}
                   />
                 </label>
                 <div className="form-grid">
                   <label className="field">
-                    Email
+                    Recipient email (optional)
                     <input
                       name="email"
                       type="email"
+                      maxLength={254}
                       defaultValue={source?.email || ""}
                     />
                   </label>
                   <label className="field">
-                    Phone
-                    <input name="phone" defaultValue={source?.phone || ""} />
+                    Recipient phone (optional)
+                    <input
+                      name="phone"
+                      type="tel"
+                      maxLength={40}
+                      defaultValue={source?.phone || ""}
+                    />
                   </label>
                 </div>
                 <input
@@ -240,7 +266,7 @@ function NewInvoiceContent() {
                           <td>
                             <button
                               className="button button-light small"
-                              onClick={() => setSelected(c)}
+                              onClick={() => selectCustomer(c)}
                               type="button"
                             >
                               Select
@@ -279,6 +305,105 @@ function NewInvoiceContent() {
           <section className="panel">
             <h2>2. Invoice details</h2>
             <form id="invoice-form" onSubmit={submit}>
+              <h3 style={{ fontSize: 14 }}>Choose invoice style</h3>
+              <div
+                className="invoice-template-grid"
+                role="group"
+                aria-label="Invoice template"
+              >
+                {invoiceTemplates.map((template) => (
+                  <button
+                    key={template.id}
+                    type="button"
+                    className={`invoice-template-choice invoice-template-choice--${template.id} ${designTemplate === template.id ? "selected" : ""}`}
+                    aria-pressed={designTemplate === template.id}
+                    onClick={() => setDesignTemplate(template.id)}
+                    style={{ "--invoice-accent": designColor }}
+                  >
+                    <span className="invoice-template-mini">
+                      <i />
+                      <i />
+                      <i />
+                    </span>
+                    <strong>{template.name}</strong>
+                    <small>{template.description}</small>
+                  </button>
+                ))}
+              </div>
+              <div className="form-grid" style={{ marginTop: 18 }}>
+                <label className="field">
+                  Invoice color
+                  <input
+                    type="color"
+                    value={designColor}
+                    onChange={(event) => setDesignColor(event.target.value)}
+                  />
+                </label>
+                {business.has_logo ? (
+                  <label className="field invoice-logo-option">
+                    <input
+                      type="checkbox"
+                      checked={showLogo}
+                      onChange={(event) => setShowLogo(event.target.checked)}
+                    />
+                    Add my shop logo to this invoice
+                  </label>
+                ) : (
+                  <p className="helper">
+                    Want your logo on invoices?{" "}
+                    <Link href="/app/storefront">
+                      Upload it in your storefront
+                    </Link>{" "}
+                    first.
+                  </p>
+                )}
+              </div>
+              <h3 style={{ fontSize: 14 }}>Recipient</h3>
+              <label className="field">
+                Recipient business name
+                <input
+                  required
+                  minLength={2}
+                  maxLength={160}
+                  value={recipientName}
+                  onChange={(event) => setRecipientName(event.target.value)}
+                  placeholder="Business being billed"
+                />
+              </label>
+              <div className="form-grid">
+                <label className="field">
+                  Recipient email (optional)
+                  <input
+                    type="email"
+                    maxLength={254}
+                    value={recipientEmail}
+                    onChange={(event) => setRecipientEmail(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  Recipient phone (optional)
+                  <input
+                    type="tel"
+                    maxLength={40}
+                    value={recipientPhone}
+                    onChange={(event) => setRecipientPhone(event.target.value)}
+                  />
+                </label>
+              </div>
+              <h3 style={{ fontSize: 14, marginTop: 24 }}>
+                From {business.name}
+              </h3>
+              <label className="field">
+                Sender phone number
+                <input
+                  name="sender_phone"
+                  type="tel"
+                  required
+                  maxLength={40}
+                  defaultValue={business.whatsapp}
+                  placeholder="+263771234567"
+                />
+              </label>
               <label className="field">
                 Due date
                 <input name="due_at" type="date" required />
@@ -467,7 +592,15 @@ function NewInvoiceContent() {
           <section className="panel">
             <span className="eyebrow">SUMMARY</span>
             <h2>Invoice preview</h2>
-            <p>{selected?.name || "Select a customer"}</p>
+            <p>
+              {
+                invoiceTemplates.find((item) => item.id === designTemplate)
+                  ?.name
+              }{" "}
+              style · {showLogo ? "With logo" : "No logo"}
+            </p>
+            <p>From: {business.name}</p>
+            <p>To: {recipientName || "Select a recipient"}</p>
             <div className="invoice-line">
               <span>Subtotal</span>
               <strong>{money(subtotal, business.currency)}</strong>
